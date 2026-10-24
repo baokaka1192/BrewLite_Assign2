@@ -60,6 +60,8 @@ npm run dev:frontend     # http://localhost:3000
 | GET | `/api/products` | List products. Optional `?category=coffee\|tea\|pastry` (400 on any other value). |
 | GET | `/api/products/:id` | Get one product, or 404 if it does not exist. |
 
+Menu photos: Unsplash, credits in [apps/frontend/public/images/menu/CREDITS.md](apps/frontend/public/images/menu/CREDITS.md).
+
 ## Run with Docker
 
 ```bash
