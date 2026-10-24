@@ -75,6 +75,7 @@ model Payment {
   idempotencyKey String   @unique
   amount         Int
   method         String
+  // status: PROCESSING | SUCCESS | FAILED. A partial unique index allows only one PROCESSING row per order (see migration 20261024180000).
   status         String
   createdAt      DateTime @default(now())
 }
