@@ -1,12 +1,22 @@
-import Link from 'next/link';
+import { Suspense } from 'react';
+import { Navbar } from '@/components/layout/navbar';
+import { Footer } from '@/components/layout/footer';
+import { MenuView } from '@/components/menu/menu-view';
+import { MenuSkeleton } from '@/components/menu/menu-skeleton';
+import { AmberRule } from '@/components/shared/amber-rule';
 
-// Placeholder — implemented in Task 3 (Menu page) using GET /products.
 export default function MenuPage() {
   return (
-    <main className="section container-page">
-      <h1 className="text-4xl font-bold">Menu</h1>
-      <p className="mt-4 text-muted-foreground">The ordering menu is built in Sprint 1, Task 3.</p>
-      <Link href="/" className="mt-6 inline-block underline">Back to home</Link>
-    </main>
+    <>
+      <Navbar />
+      <main className="section container-page">
+        <h1 className="text-4xl font-bold md:text-5xl">Menu</h1>
+        <AmberRule />
+        <Suspense fallback={<MenuSkeleton />}>
+          <MenuView />
+        </Suspense>
+      </main>
+      <Footer />
+    </>
   );
 }

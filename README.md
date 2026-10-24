@@ -54,6 +54,8 @@ npm run dev:backend      # http://localhost:4000/api  -> { "message": "Hello fro
 npm run dev:frontend     # http://localhost:3000
 ```
 
+The frontend calls the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api`); override it in `apps/frontend/.env.local` if the backend runs elsewhere.
+
 ## Database (PostgreSQL + Prisma)
 
 The backend stores data in PostgreSQL through Prisma. Schema: `apps/backend/prisma/schema.prisma`.
