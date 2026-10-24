@@ -109,21 +109,21 @@ describe('OrdersService.createOrder', () => {
   });
 
   it('persists a PENDING order with server-computed total and returns it', async () => {
-    const res = await service.createOrder(dto);
+    const res = await service.createOrder(dto, 'u1');
 
     expect(res).toEqual(
       expect.objectContaining({ id: 'ord1', status: 'PENDING', total: 116000 }),
     );
     expect(res.items[0]).toEqual(expect.objectContaining({ size: 'L', lineTotal: 116000 }));
     const data = prisma.order.create.mock.calls[0][0].data;
-    expect(data.userId).toBeNull();
+    expect(data.userId).toBe('u1');
     expect(data.total).toBe(116000);
     expect(data.items.create[0]).toEqual(expect.objectContaining({ product: { connect: { id: '1' } }, qty: 2, lineTotal: 116000 }));
   });
 
   it('does not write anything when validation fails', async () => {
     await expect(
-      service.createOrder({ items: [item({ productId: 'nope' })] }),
+      service.createOrder({ items: [item({ productId: 'nope' })] }, 'u1'),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.order.create).not.toHaveBeenCalled();
   });

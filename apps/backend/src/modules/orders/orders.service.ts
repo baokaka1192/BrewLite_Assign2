@@ -104,7 +104,7 @@ export function priceCart(
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createOrder(dto: CreateOrderDto): Promise<OrderResponse> {
+  async createOrder(dto: CreateOrderDto, userId: string): Promise<OrderResponse> {
     const ids = [...new Set(dto.items.map((i) => i.productId))];
     const rows = await this.prisma.product.findMany({ where: { id: { in: ids } } });
     const products = new Map<string, ProductRow>(rows.map((r) => [r.id, r]));
@@ -116,8 +116,7 @@ export class OrdersService {
     const order = await this.prisma.$transaction((tx) =>
       tx.order.create({
         data: {
-          // TODO(Task 7): set userId from the JWT once auth exists.
-          userId: null,
+          userId,
           status: 'PENDING',
           total,
           note: dto.note ?? null,

@@ -105,7 +105,17 @@ npm run build       # runs prisma generate, then nest build
 | ------ | ---- | ----------- |
 | GET | `/api/products` | List products. Optional `?category=coffee\|tea\|pastry` (400 on any other value). |
 | GET | `/api/products/:id` | Get one product, or 404 if it does not exist. |
-| POST | `/api/orders` | Create a PENDING order from a cart `{items:[{productId, size?, toppingIds?, qty}], note?}`. Totals are computed server-side. Returns 201 with the order id and total; 400 on invalid input, 404 on unknown product, 409 when qty exceeds stock. |
+| POST | `/api/auth/register` | Register `{email, password (8-72 chars), name?}`. Email is lowercased. Returns 201 with `{user, accessToken}`; 400 on invalid input, 409 when the email is already registered. |
+| POST | `/api/auth/login` | Log in with `{email, password}`. Returns 200 with `{user, accessToken}`; 401 with the same message for unknown email or wrong password. |
+| GET | `/api/auth/me` | Current user profile. Requires `Authorization: Bearer <accessToken>`; 401 otherwise. |
+| POST | `/api/orders` | Create a PENDING order from a cart `{items:[{productId, size?, toppingIds?, qty}], note?}`. Requires `Authorization: Bearer <accessToken>` and sets the order's `userId` from the token (guest orders are no longer accepted). Totals are computed server-side. Returns 201 with the order id and total; 400 on invalid input, 401 without a valid token, 404 on unknown product, 409 when qty exceeds stock. |
+
+Auth environment variables (set in `apps/backend/.env`):
+
+| Env var | Default | Notes |
+| ------- | ------- | ----- |
+| `JWT_SECRET` | `dev-secret` outside production | Required when `NODE_ENV=production`; the backend refuses to start without it. |
+| `JWT_EXPIRES_IN` | `1d` | Token lifetime, passed to `jsonwebtoken` (e.g. `1h`, `7d`). |
 
 Menu photos: Unsplash, credits in [apps/frontend/public/images/menu/CREDITS.md](apps/frontend/public/images/menu/CREDITS.md).
 
