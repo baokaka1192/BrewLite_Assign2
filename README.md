@@ -109,6 +109,7 @@ npm run build       # runs prisma generate, then nest build
 | POST | `/api/auth/login` | Log in with `{email, password}`. Returns 200 with `{user, accessToken}`; 401 with the same message for unknown email or wrong password. |
 | GET | `/api/auth/me` | Current user profile. Requires `Authorization: Bearer <accessToken>`; 401 otherwise. |
 | POST | `/api/orders` | Create a PENDING order from a cart `{items:[{productId, size?, toppingIds?, qty}], note?}`. Requires `Authorization: Bearer <accessToken>` and sets the order's `userId` from the token (guest orders are no longer accepted). Totals are computed server-side. Returns 201 with the order id and total; 400 on invalid input, 401 without a valid token, 404 on unknown product, 409 when qty exceeds stock. |
+| POST | `/api/payments` | Mock payment for an order `{orderId, method: "WALLET"\|"CARD", cardNumber?}` (cardNumber is required for CARD, 12-19 digits). Requires `Authorization: Bearer <accessToken>`. Amount is always the order total from the DB. Returns 201 with `{payment, order:{id,status}}` and the order becomes PAID. Returns 402 with `{reason, payment, order}` and the order becomes PAYMENT_FAILED when the mock gateway declines (CARD ending in 0000, or WALLET over 5,000,000). Retry is allowed from PAYMENT_FAILED. 400 on invalid input, 401 without a valid token, 404 when the order is not the user's, 409 when the order is not PENDING or PAYMENT_FAILED. Optional `Idempotency-Key` header (stored only; replay semantics come in Task 10). |
 
 Auth environment variables (set in `apps/backend/.env`):
 
