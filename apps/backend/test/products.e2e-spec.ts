@@ -1,14 +1,27 @@
+import { execSync } from 'child_process';
+import * as path from 'path';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as request from 'supertest';
+import { PrismaModule } from '../src/prisma/prisma.module';
 import { ProductsModule } from '../src/modules/products/products.module';
+
+const BACKEND_DIR = path.resolve(__dirname, '..');
+const TEST_DATABASE_URL =
+  process.env.DATABASE_URL_TEST ?? 'postgresql://brewlite:brewlite@localhost:5432/brewlite_test';
 
 describe('Products (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
+    // Never run e2e against the development database.
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
+    const env = { ...process.env, DATABASE_URL: TEST_DATABASE_URL };
+    execSync('npx prisma migrate deploy', { cwd: BACKEND_DIR, env, stdio: 'inherit' });
+    execSync('npx prisma db seed', { cwd: BACKEND_DIR, env, stdio: 'inherit' });
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [ProductsModule],
+      imports: [PrismaModule, ProductsModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -17,7 +30,7 @@ describe('Products (e2e)', () => {
       new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
     );
     await app.init();
-  });
+  }, 120_000);
 
   afterAll(async () => {
     await app.close();
