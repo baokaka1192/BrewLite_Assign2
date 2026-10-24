@@ -13,6 +13,7 @@ brewlite/
 │   │   │   ├── main.ts             bootstrap: prefix /api, CORS, ValidationPipe
 │   │   │   ├── app.module.ts       root module
 │   │   │   ├── config/             typed env configuration
+│   │   │   ├── prisma/             global PrismaModule + PrismaService
 │   │   │   ├── common/             shared: decorators, filters, guards, interceptors, pipes
 │   │   │   └── modules/            one folder per feature (controller, service, dto, entity)
 │   │   │       ├── auth/           Task 7   register / login / JWT
@@ -21,7 +22,7 @@ brewlite/
 │   │   │       ├── orders/         Task 6, 9, 10  state machine, history
 │   │   │       ├── payments/       Task 8, 10     mock gateway, idempotency
 │   │   │       └── promotions/     Task 10  vouchers, loyalty points
-│   │   ├── prisma/                 schema + migrations (added with the ORM)
+│   │   ├── prisma/                 schema, migrations, seed.ts (Prisma + PostgreSQL)
 │   │   └── test/                   e2e tests
 │   └── frontend/                   Next.js App Router  (http://localhost:3000)
 │       ├── public/images/          photos for the landing page
@@ -52,6 +53,49 @@ npm run install:all
 npm run dev:backend      # http://localhost:4000/api  -> { "message": "Hello from BrewLite API" }
 npm run dev:frontend     # http://localhost:3000
 ```
+
+## Database (PostgreSQL + Prisma)
+
+The backend stores data in PostgreSQL through Prisma. Schema: `apps/backend/prisma/schema.prisma`.
+
+Two databases live in the same compose Postgres container:
+
+| Env var | Database | Used by |
+| ------- | -------- | ------- |
+| `DATABASE_URL` | `brewlite` | dev server, `prisma migrate`, `prisma db seed` |
+| `DATABASE_URL_TEST` | `brewlite_test` | e2e tests only (migrated and seeded automatically) |
+
+```bash
+cp .env.example .env                       # root (compose) and
+cp apps/backend/.env.example apps/backend/.env   # backend (Prisma CLI reads this one)
+
+docker compose up -d db                    # Postgres 16 on localhost:5432, waits for healthcheck
+cd apps/backend
+npm install
+npx prisma migrate dev                     # create/apply migrations locally (dev only)
+npx prisma migrate deploy                  # apply existing migrations (CI / fresh DB)
+npm run prisma:seed                        # upsert the 10 seed products (idempotent)
+```
+
+`brewlite_test` is created by `docker/postgres/init/01-create-test-db.sql`, which only runs when the
+`db-data` volume is first created. If the volume already exists, create it once by hand:
+
+```bash
+docker compose exec db psql -U brewlite -d brewlite -c "CREATE DATABASE brewlite_test OWNER brewlite;"
+```
+
+Reset the dev database (drops all data): `cd apps/backend && npx prisma migrate reset`.
+
+## Tests
+
+```bash
+cd apps/backend
+npm test            # unit tests, PrismaService is mocked (no database needed)
+npm run test:e2e    # needs the db container; migrates + seeds brewlite_test in beforeAll
+npm run build       # runs prisma generate, then nest build
+```
+
+`npm test`, `npm run build` and `npm run test:e2e` run `prisma generate` first, so the client is always in sync with the schema.
 
 ## API endpoints
 
