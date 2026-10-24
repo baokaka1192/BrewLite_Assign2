@@ -17,10 +17,34 @@ describe('ProductsService', () => {
       const products = service.findAll();
       expect(products.length).toBeGreaterThanOrEqual(10);
       for (const p of products) {
-        expect(Number.isInteger(p.priceVND)).toBe(true);
+        expect(Number.isInteger(p.price)).toBe(true);
         expect(Number.isInteger(p.stock)).toBe(true);
         expect(typeof p.available).toBe('boolean');
         expect(['coffee', 'tea', 'pastry']).toContain(p.category);
+        expect(Array.isArray(p.sizes)).toBe(true);
+        expect(Array.isArray(p.toppings)).toBe(true);
+      }
+    });
+
+    it('gives drinks S/M/L sizes and toppings, pastries neither', () => {
+      const products = service.findAll();
+      for (const p of products) {
+        if (p.category === 'pastry') {
+          expect(p.sizes).toEqual([]);
+          expect(p.toppings).toEqual([]);
+        } else {
+          expect(p.sizes).toEqual([
+            { code: 'S', delta: 0 },
+            { code: 'M', delta: 5000 },
+            { code: 'L', delta: 10000 },
+          ]);
+          expect(p.toppings.length).toBeGreaterThan(0);
+          for (const t of p.toppings) {
+            expect(typeof t.id).toBe('string');
+            expect(typeof t.name).toBe('string');
+            expect(Number.isInteger(t.price)).toBe(true);
+          }
+        }
       }
     });
 

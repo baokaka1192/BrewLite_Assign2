@@ -33,6 +33,33 @@ describe('Products (e2e)', () => {
       });
   });
 
+  it('GET /api/products items expose price, sizes and toppings', () => {
+    return request(app.getHttpServer())
+      .get('/api/products')
+      .expect(200)
+      .expect((res) => {
+        for (const p of res.body) {
+          expect(typeof p.price).toBe('number');
+          expect(p).not.toHaveProperty('priceVND');
+          expect(Array.isArray(p.sizes)).toBe(true);
+          expect(Array.isArray(p.toppings)).toBe(true);
+          if (p.category === 'pastry') {
+            expect(p.sizes).toEqual([]);
+            expect(p.toppings).toEqual([]);
+          } else {
+            expect(p.sizes).toEqual([
+              { code: 'S', delta: 0 },
+              { code: 'M', delta: 5000 },
+              { code: 'L', delta: 10000 },
+            ]);
+            expect(p.toppings[0]).toEqual(
+              expect.objectContaining({ id: expect.any(String), name: expect.any(String), price: expect.any(Number) }),
+            );
+          }
+        }
+      });
+  });
+
   it('GET /api/products?category=foo returns 400', () => {
     return request(app.getHttpServer()).get('/api/products?category=foo').expect(400);
   });
