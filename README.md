@@ -105,6 +105,7 @@ npm run build       # runs prisma generate, then nest build
 | ------ | ---- | ----------- |
 | GET | `/api/products` | List products. Optional `?category=coffee\|tea\|pastry` (400 on any other value). |
 | GET | `/api/products/:id` | Get one product, or 404 if it does not exist. |
+| POST | `/api/orders` | Create a PENDING order from a cart `{items:[{productId, size?, toppingIds?, qty}], note?}`. Totals are computed server-side. Returns 201 with the order id and total; 400 on invalid input, 404 on unknown product, 409 when qty exceeds stock. |
 
 Menu photos: Unsplash, credits in [apps/frontend/public/images/menu/CREDITS.md](apps/frontend/public/images/menu/CREDITS.md).
 
