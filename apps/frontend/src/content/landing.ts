@@ -23,10 +23,10 @@ export const hero = {
 };
 
 export const menuHighlights = [
-  { name: 'Espresso Drinks', desc: 'Flat white, cortado, oat latte', price: 'from 35.000đ', brief: 'Flat white with latte art on warm wooden table' },
-  { name: 'Filter Coffee', desc: 'V60, Chemex, cold brew', price: 'from 40.000đ', brief: 'V60 pour over being brewed, ceramic dripper, steam' },
-  { name: 'All-Day Brunch', desc: 'Avocado toast, eggs, granola', price: 'from 85.000đ', brief: 'Avocado toast brunch plate, artisan bread, eggs' },
-  { name: 'Baked Goods', desc: 'Croissants, banana bread, seasonal cakes', price: 'from 30.000đ', brief: 'Fresh croissants and pastries on marble counter' },
+  { name: 'Espresso Drinks', src: '/images/menu/cappuccino.jpg', desc: 'Flat white, cortado, oat latte', price: 'from 35.000đ', brief: 'Flat white with latte art on warm wooden table' },
+  { name: 'Filter Coffee', src: '/images/menu/ca-phe-den-da.jpg', desc: 'V60, Chemex, cold brew', price: 'from 40.000đ', brief: 'V60 pour over being brewed, ceramic dripper, steam' },
+  { name: 'All-Day Brunch', src: '/images/menu/banh-mi-pate-trung.jpg', desc: 'Avocado toast, eggs, granola', price: 'from 85.000đ', brief: 'Avocado toast brunch plate, artisan bread, eggs' },
+  { name: 'Baked Goods', src: '/images/menu/croissant-bo.jpg', desc: 'Croissants, banana bread, seasonal cakes', price: 'from 30.000đ', brief: 'Fresh croissants and pastries on marble counter' },
 ];
 
 export const brewMethods = [

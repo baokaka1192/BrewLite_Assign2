@@ -22,6 +22,7 @@ export function MenuHighlights() {
             >
               <div className="overflow-hidden">
                 <ImageFrame
+                  src={m.src}
                   alt={m.name}
                   brief={m.brief}
                   className="aspect-[4/3] w-full transition-transform duration-200 ease-out group-hover:scale-[1.02]"
