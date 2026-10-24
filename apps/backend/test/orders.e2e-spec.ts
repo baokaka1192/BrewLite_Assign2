@@ -168,4 +168,179 @@ describe('Orders (e2e)', () => {
       .send({ items: [{ productId: 'unknown-id', qty: 1 }] })
       .expect(404);
   });
+
+  describe('order history (GET /api/orders/me, GET /api/orders/:id)', () => {
+    let otherToken: string;
+    let olderOrderId: string;
+    let newerOrderId: string;
+    let foreignOrderId: string;
+
+    const placeOrder = (accessToken: string) =>
+      request(app.getHttpServer())
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ items: [{ productId: pastryId, qty: 1 }] })
+        .expect(201);
+
+    beforeAll(async () => {
+      const other = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: `orders-other-${Date.now()}@example.com`, password: 'orders-password' })
+        .expect(201);
+      otherToken = other.body.accessToken;
+
+      olderOrderId = (await placeOrder(token)).body.id;
+      newerOrderId = (await placeOrder(token)).body.id;
+      foreignOrderId = (await placeOrder(otherToken)).body.id;
+
+      await prisma.order.update({
+        where: { id: olderOrderId },
+        data: { createdAt: new Date('2026-01-01T00:00:00Z') },
+      });
+      await prisma.order.update({
+        where: { id: newerOrderId },
+        data: { createdAt: new Date('2026-01-02T00:00:00Z') },
+      });
+
+      // Two payments on the newer order: the latest one (FAILED) must be reported.
+      await prisma.payment.create({
+        data: {
+          orderId: newerOrderId,
+          idempotencyKey: `orders-e2e-${Date.now()}-a`,
+          amount: 1,
+          method: 'WALLET',
+          status: 'SUCCESS',
+          createdAt: new Date('2026-01-02T01:00:00Z'),
+        },
+      });
+      await prisma.payment.create({
+        data: {
+          orderId: newerOrderId,
+          idempotencyKey: `orders-e2e-${Date.now()}-b`,
+          amount: 1,
+          method: 'CARD',
+          status: 'FAILED',
+          createdAt: new Date('2026-01-02T02:00:00Z'),
+        },
+      });
+    }, 60_000);
+
+    it('GET /api/orders/me returns 401 without a token', () => {
+      return request(app.getHttpServer()).get('/api/orders/me').expect(401);
+    });
+
+    it('GET /api/orders/:id returns 401 without a token', () => {
+      return request(app.getHttpServer()).get(`/api/orders/${olderOrderId}`).expect(401);
+    });
+
+    it('GET /api/orders/me lists only the caller orders, newest first', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/orders/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const ownCount = await prisma.order.count({ where: { userId } });
+      expect(res.body.total).toBe(ownCount);
+      expect(res.body.page).toBe(1);
+      expect(res.body.limit).toBe(20);
+
+      const ids: string[] = res.body.items.map((o: { id: string }) => o.id);
+      expect(ids).not.toContain(foreignOrderId);
+      expect(ids.indexOf(newerOrderId)).toBeLessThan(ids.indexOf(olderOrderId));
+
+      const times: number[] = res.body.items.map((o: { createdAt: string }) =>
+        new Date(o.createdAt).getTime(),
+      );
+      for (let i = 1; i < times.length; i++) {
+        expect(times[i]).toBeLessThanOrEqual(times[i - 1]);
+      }
+    });
+
+    it('GET /api/orders/me returns the order shape with items and latest payment status', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/orders/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const order = res.body.items.find((o: { id: string }) => o.id === newerOrderId);
+      expect(order).toEqual(
+        expect.objectContaining({
+          status: 'PENDING',
+          total: expect.any(Number),
+          createdAt: '2026-01-02T00:00:00.000Z',
+          latestPaymentStatus: 'FAILED',
+        }),
+      );
+      expect(order.items[0]).toEqual({
+        productName: expect.any(String),
+        size: '',
+        toppings: [],
+        qty: 1,
+        lineTotal: expect.any(Number),
+      });
+    });
+
+    it('GET /api/orders/me paginates with page and limit', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/orders/me?page=2&limit=1')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.page).toBe(2);
+      expect(res.body.limit).toBe(1);
+    });
+
+    it('GET /api/orders/me returns 400 for limit above 50 or invalid paging', async () => {
+      for (const qs of ['limit=51', 'limit=0', 'page=0', 'limit=abc']) {
+        await request(app.getHttpServer())
+          .get(`/api/orders/me?${qs}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(400);
+      }
+    });
+
+    it('GET /api/orders/me returns an empty page for a user without orders', async () => {
+      const fresh = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: `orders-empty-${Date.now()}@example.com`, password: 'orders-password' })
+        .expect(201);
+      const res = await request(app.getHttpServer())
+        .get('/api/orders/me')
+        .set('Authorization', `Bearer ${fresh.body.accessToken}`)
+        .expect(200);
+      expect(res.body).toEqual({ items: [], page: 1, limit: 20, total: 0 });
+    });
+
+    it('GET /api/orders/:id returns the owner order', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/orders/${newerOrderId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(res.body).toEqual(
+        expect.objectContaining({ id: newerOrderId, latestPaymentStatus: 'FAILED' }),
+      );
+    });
+
+    it('GET /api/orders/:id returns 404 for another user order', () => {
+      return request(app.getHttpServer())
+        .get(`/api/orders/${foreignOrderId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    });
+
+    it('GET /api/orders/:id returns 404 (not 500) for malformed ids', async () => {
+      for (const id of ['%27%20OR%201%3D1', 'a'.repeat(300), '%00', '..']) {
+        await request(app.getHttpServer())
+          .get(`/api/orders/${id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(404);
+      }
+    });
+
+    it('GET /api/orders/:id returns 404 for an unknown id', () => {
+      return request(app.getHttpServer())
+        .get('/api/orders/does-not-exist')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    });
+  });
 });

@@ -4,9 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProductSize, SizeCode, Topping } from '../products/product.entity';
 import { CartItemDto, CreateOrderDto } from './dto/create-order.dto';
+import { MY_ORDERS_DEFAULT_LIMIT } from './dto/list-my-orders-query.dto';
 
 type ProductRow = {
   id: string;
@@ -35,6 +37,46 @@ export interface OrderResponse {
   items: PricedLine[];
   createdAt: Date;
 }
+
+export interface OrderDetailItem {
+  productName: string;
+  size: string;
+  toppings: Topping[];
+  qty: number;
+  lineTotal: number;
+}
+
+export interface OrderDetail {
+  id: string;
+  status: string;
+  total: number;
+  createdAt: Date;
+  latestPaymentStatus: string | null;
+  items: OrderDetailItem[];
+}
+
+export interface OrderHistoryPage {
+  items: OrderDetail[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+const ORDER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+const ORDER_DETAIL_INCLUDE = {
+  items: {
+    orderBy: { id: 'asc' },
+    include: { product: { select: { name: true } } },
+  },
+  payments: {
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { status: true },
+  },
+} satisfies Prisma.OrderInclude;
+
+type OrderWithDetail = Prisma.OrderGetPayload<{ include: typeof ORDER_DETAIL_INCLUDE }>;
 
 /**
  * Prices every cart line from the DB product rows. Pure function so the
@@ -103,6 +145,62 @@ export function priceCart(
 @Injectable()
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Orders of one user, newest first. Sorting by id breaks ties between equal timestamps. */
+  async listMyOrders(
+    userId: string,
+    query: { page?: number; limit?: number },
+  ): Promise<OrderHistoryPage> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? MY_ORDERS_DEFAULT_LIMIT;
+    const where = { userId };
+
+    const [total, orders] = await this.prisma.$transaction([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        include: ORDER_DETAIL_INCLUDE,
+      }),
+    ]);
+
+    return { items: orders.map((o) => this.toOrderDetail(o)), page, limit, total };
+  }
+
+  /** Single order for the confirmation page. Other users' orders answer 404, not 403. */
+  async getMyOrder(orderId: string, userId: string): Promise<OrderDetail> {
+    // Ids are cuids. Anything else (e.g. NUL bytes) cannot exist and would make Postgres fail, so answer 404.
+    if (!ORDER_ID_PATTERN.test(orderId)) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, userId },
+      include: ORDER_DETAIL_INCLUDE,
+    });
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+    return this.toOrderDetail(order);
+  }
+
+  private toOrderDetail(order: OrderWithDetail): OrderDetail {
+    return {
+      id: order.id,
+      status: order.status,
+      total: order.total,
+      createdAt: order.createdAt,
+      latestPaymentStatus: order.payments[0]?.status ?? null,
+      items: order.items.map((item) => ({
+        productName: item.product.name,
+        size: item.size,
+        toppings: item.toppings as unknown as Topping[],
+        qty: item.qty,
+        lineTotal: item.lineTotal,
+      })),
+    };
+  }
 
   async createOrder(dto: CreateOrderDto, userId: string): Promise<OrderResponse> {
     const ids = [...new Set(dto.items.map((i) => i.productId))];

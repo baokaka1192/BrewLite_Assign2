@@ -128,3 +128,106 @@ describe('OrdersService.createOrder', () => {
     expect(prisma.order.create).not.toHaveBeenCalled();
   });
 });
+
+describe('OrdersService order history', () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: 'ord1',
+    status: 'PAID',
+    total: 116000,
+    createdAt: new Date('2026-10-24T10:00:00Z'),
+    items: [
+      {
+        size: 'M',
+        toppings: [{ id: 't1', name: 'Trân châu', price: 5000 }],
+        qty: 2,
+        lineTotal: 116000,
+        product: { name: 'Latte' },
+      },
+    ],
+    payments: [{ status: 'SUCCESS' }],
+    ...over,
+  });
+  let prisma: {
+    order: { count: jest.Mock; findMany: jest.Mock; findFirst: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let service: OrdersService;
+
+  beforeEach(() => {
+    prisma = {
+      order: {
+        count: jest.fn().mockResolvedValue(1),
+        findMany: jest.fn().mockResolvedValue([row()]),
+        findFirst: jest.fn().mockResolvedValue(row()),
+      },
+      $transaction: jest.fn().mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
+    };
+    service = new OrdersService(prisma as unknown as PrismaService);
+  });
+
+  it('listMyOrders filters by owner, sorts newest first and paginates', async () => {
+    const res = await service.listMyOrders('u1', { page: 2, limit: 5 });
+
+    const args = prisma.order.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ userId: 'u1' });
+    expect(args.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    expect(args.skip).toBe(5);
+    expect(args.take).toBe(5);
+    expect(prisma.order.count).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+    expect(res).toEqual({ page: 2, limit: 5, total: 1, items: [expect.any(Object)] });
+  });
+
+  it('listMyOrders defaults to page 1 and limit 20', async () => {
+    const res = await service.listMyOrders('u1', {});
+    const args = prisma.order.findMany.mock.calls[0][0];
+    expect(args.skip).toBe(0);
+    expect(args.take).toBe(20);
+    expect(res.page).toBe(1);
+    expect(res.limit).toBe(20);
+  });
+
+  it('maps items with product name, size, toppings, qty, lineTotal and latest payment status', async () => {
+    const res = await service.listMyOrders('u1', {});
+    expect(res.items[0]).toEqual({
+      id: 'ord1',
+      status: 'PAID',
+      total: 116000,
+      createdAt: new Date('2026-10-24T10:00:00Z'),
+      latestPaymentStatus: 'SUCCESS',
+      items: [
+        {
+          productName: 'Latte',
+          size: 'M',
+          toppings: [{ id: 't1', name: 'Trân châu', price: 5000 }],
+          qty: 2,
+          lineTotal: 116000,
+        },
+      ],
+    });
+  });
+
+  it('reports latestPaymentStatus null when the order has no payment', async () => {
+    prisma.order.findMany.mockResolvedValueOnce([row({ payments: [] })]);
+    const res = await service.listMyOrders('u1', {});
+    expect(res.items[0].latestPaymentStatus).toBeNull();
+  });
+
+  it('getMyOrder scopes the lookup to the owner', async () => {
+    const res = await service.getMyOrder('ord1', 'u1');
+    expect(prisma.order.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'ord1', userId: 'u1' } }),
+    );
+    expect(res.id).toBe('ord1');
+    expect(res.latestPaymentStatus).toBe('SUCCESS');
+  });
+
+  it('getMyOrder answers 404 without querying for malformed ids', async () => {
+    await expect(service.getMyOrder('%00', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.order.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('getMyOrder throws 404 when the order is not found or belongs to someone else', async () => {
+    prisma.order.findFirst.mockResolvedValueOnce(null);
+    await expect(service.getMyOrder('ord2', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
