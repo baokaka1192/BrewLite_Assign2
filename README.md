@@ -53,6 +53,13 @@ npm run dev:backend      # http://localhost:4000/api  -> { "message": "Hello fro
 npm run dev:frontend     # http://localhost:3000
 ```
 
+## API endpoints
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/api/products` | List products. Optional `?category=coffee\|tea\|pastry` (400 on any other value). |
+| GET | `/api/products/:id` | Get one product, or 404 if it does not exist. |
+
 ## Run with Docker
 
 ```bash
