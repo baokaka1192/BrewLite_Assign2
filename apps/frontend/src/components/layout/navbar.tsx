@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Coffee, Menu, X } from 'lucide-react';
+import { CartLink } from '@/components/cart/cart-link';
 import { Button } from '@/components/ui/button';
 import { brand, navLinks } from '@/content/landing';
 
@@ -23,6 +24,9 @@ export function Navbar() {
               </a>
             </li>
           ))}
+          <li>
+            <CartLink />
+          </li>
           <li>
             <Button asChild size="sm">
               <a href="/menu">Order ahead →</a>
@@ -47,6 +51,9 @@ export function Navbar() {
               <a href={l.href} onClick={() => setOpen(false)}>{l.label}</a>
             </li>
           ))}
+          <li>
+            <CartLink onNavigate={() => setOpen(false)} />
+          </li>
           <li>
             <Button asChild className="w-full">
               <a href="/menu">Order ahead →</a>

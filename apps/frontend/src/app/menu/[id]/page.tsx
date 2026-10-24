@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Footer } from '@/components/layout/footer';
 import { Navbar } from '@/components/layout/navbar';
-import { ProductOptions } from '@/components/menu/product-options';
+import { AddToCartOptions } from '@/components/menu/add-to-cart-options';
 import { AmberRule } from '@/components/shared/amber-rule';
 import { ImageFrame } from '@/components/shared/image-frame';
 import { getProduct } from '@/lib/api';
@@ -40,7 +40,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
             <p className="text-muted-foreground">{product.description}</p>
             <p className="mt-4 text-lg font-medium text-accent">From {formatVND(product.price)}</p>
             <div className="mt-8">
-              <ProductOptions product={product} />
+              <AddToCartOptions product={product} />
             </div>
           </div>
         </div>
