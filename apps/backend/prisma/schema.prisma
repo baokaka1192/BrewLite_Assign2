@@ -36,13 +36,13 @@ model User {
   id           String  @id @default(cuid())
   email        String  @unique
   passwordHash String
+  name         String?
   loyaltyPoints Int    @default(0)
   orders       Order[]
 }
 
 model Order {
   id          String      @id @default(cuid())
-  // TODO(Task 7): set userId from the JWT for authenticated orders; guest orders stay null.
   userId      String?
   user        User?       @relation(fields: [userId], references: [id])
   status      OrderStatus @default(PENDING)
