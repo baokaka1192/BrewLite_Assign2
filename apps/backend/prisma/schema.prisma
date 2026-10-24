@@ -42,10 +42,12 @@ model User {
 
 model Order {
   id          String      @id @default(cuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
+  // TODO(Task 7): set userId from the JWT for authenticated orders; guest orders stay null.
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id])
   status      OrderStatus @default(PENDING)
   total       Int
+  note        String?
   discount    Int         @default(0)
   voucherCode String?
   version     Int         @default(0)
