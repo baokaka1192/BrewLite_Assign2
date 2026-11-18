@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Contrast (WCAG 2.1, computed): light and dark text tokens meet AA 4.5:1 on
+ * background and surface; primary-foreground on primary and accent-foreground
+ * on accent meet 4.5:1 in both themes.
+ */
+:root {
+  color-scheme: light;
+  --background: 40 45% 98%;
+  --foreground: 22 35% 20%;
+  --primary: 20 55% 38%;
+  --primary-foreground: 40 45% 98%;
+  --accent: 40 80% 55%;
+  --accent-foreground: 22 35% 20%;
+  --accent-text: 32 80% 32%;
+  --surface: 38 40% 95%;
+  --muted-foreground: 22 12% 38%;
+  --border: 36 25% 86%;
+  --shimmer: 40 45% 98%;
+  --shadow-ink: 22 40% 12%;
+  --shadow-lift: 20 55% 38% / 0.45;
+  --shadow-btn: 20 55% 38% / 0.45;
+  --shadow-btn-hover: 20 55% 38% / 0.5;
+  --shadow-btn-outline-hover: 20 55% 38% / 0.4;
+  --shadow-nav: 20 55% 38% / 0.25;
+  --shadow-card-hover: 20 55% 38% / 0.35;
+}
+
+/* Warm espresso palette. Applied via <html data-theme="dark"> (see src/lib/theme.ts). */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: 22 25% 8%;
+  --foreground: 35 40% 92%;
+  --primary: 25 50% 60%;
+  --primary-foreground: 22 25% 10%;
+  --accent: 38 65% 55%;
+  --accent-foreground: 22 25% 8%;
+  --accent-text: 38 80% 68%;
+  --surface: 22 20% 13%;
+  --muted-foreground: 25 12% 68%;
+  --border: 22 15% 22%;
+  --shimmer: 22 20% 20%;
+  --shadow-ink: 22 40% 2%;
+  --shadow-lift: 0 0% 0% / 0.5;
+  --shadow-btn: 0 0% 0% / 0.5;
+  --shadow-btn-hover: 0 0% 0% / 0.6;
+  --shadow-btn-outline-hover: 0 0% 0% / 0.5;
+  --shadow-nav: 0 0% 0% / 0.4;
+  --shadow-card-hover: 22 40% 2% / 0.5;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-background font-sans font-light text-foreground antialiased;
+  }
+  h1, h2, h3 { @apply font-display; }
+  :focus-visible { @apply outline outline-2 outline-offset-2 outline-primary; }
+  ::selection { background: hsl(var(--accent) / 0.35); color: hsl(var(--foreground)); }
+  body {
+    background-image:
+      radial-gradient(hsl(var(--primary) / 0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+}
+
+@layer components {
+  .label {
+    @apply font-sans text-[10px] font-medium uppercase tracking-label text-muted-foreground;
+  }
+  .section { @apply px-6 py-24 md:px-12 md:py-32; }  .container-page { @apply mx-auto w-full max-w-6xl; }
+}
+
+@keyframes skeleton-sweep {
+  to { transform: translateX(100%); }
+}
+
+/* Sweeping highlight on a skeleton block; transform-only and removed for reduced motion. */
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, hsl(var(--shimmer) / 0.6), transparent);
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .skeleton-shimmer::after { animation: none; display: none; }
+}

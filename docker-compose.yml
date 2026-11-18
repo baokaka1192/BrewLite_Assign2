@@ -16,7 +16,7 @@ services:
       retries: 10
 
   backend:
-    build: ./apps/backend
+    build: ./apps/api
     restart: unless-stopped
     depends_on:
       db: { condition: service_healthy }
@@ -26,6 +26,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-brewlite-dev-only-jwt-secret-change-me-32}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      # Empty by default, which keeps POST /api/auth/google disabled (404).
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # Empty by default, which keeps PATCH /api/orders/:id/status disabled (404).
       STAFF_API_KEY: ${STAFF_API_KEY:-}
     ports: ["4000:4000"]
@@ -33,9 +35,10 @@ services:
 
   frontend:
     build:
-      context: ./apps/frontend
+      context: ./apps/web
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     restart: unless-stopped
     depends_on: [backend]
     ports: ["3000:3000"]
