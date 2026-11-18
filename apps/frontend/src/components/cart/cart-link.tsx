@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ShoppingBag } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { totalItems, useCartStore } from '@/store/cart';
 
 /**
@@ -17,6 +18,7 @@ export function CartLink({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <Link
       href="/cart"
+      data-cart-target
       onClick={onNavigate}
       className="relative inline-flex items-center gap-2 text-sm transition-colors duration-200 hover:text-accent"
       aria-label={shown > 0 ? `Cart, ${shown} items` : 'Cart'}
@@ -26,9 +28,20 @@ export function CartLink({ onNavigate }: { onNavigate?: () => void }) {
       {shown > 0 && (
         <span
           data-testid="cart-badge"
-          className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent px-1.5 text-xs font-semibold leading-5 text-primary-foreground"
+          className="inline-flex min-w-[1.25rem] items-center justify-center overflow-hidden rounded-full bg-accent px-1.5 text-xs font-semibold leading-5 text-primary-foreground"
         >
-          {shown}
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.span
+              key={shown}
+              className="inline-block"
+              initial={{ y: '80%', opacity: 0, scale: 0.6 }}
+              animate={{ y: '0%', opacity: 1, scale: 1 }}
+              exit={{ y: '-80%', opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+            >
+              {shown}
+            </motion.span>
+          </AnimatePresence>
         </span>
       )}
     </Link>
