@@ -8,13 +8,33 @@ interface ImageFrameProps {
   /** Photo direction for whoever sources the image. */
   brief: string;
   className?: string;
+  /** Tailwind object-position class, e.g. "object-[50%_30%]". Defaults to centred. */
+  position?: string;
+  priority?: boolean;
+  sizes?: string;
 }
 
-export function ImageFrame({ src, alt, brief, className }: ImageFrameProps) {
+export function ImageFrame({
+  src,
+  alt,
+  brief,
+  className,
+  position = 'object-center',
+  priority,
+  sizes = '(min-width: 768px) 50vw, 100vw',
+}: ImageFrameProps) {
   if (src) {
     return (
-      <div className={cn('relative overflow-hidden', className)}>
-        <Image src={src} alt={alt} fill sizes="(min-width: 768px) 50vw, 100vw" className="object-cover" />
+      <div className={cn('relative overflow-hidden bg-surface', className)}>
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          sizes={sizes}
+          priority={priority}
+          placeholder="empty"
+          className={cn('object-cover', position)}
+        />
       </div>
     );
   }

@@ -1,5 +1,7 @@
 'use client';
 import { useId, useState } from 'react';
+import { Check } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { lineTotal, unitPrice } from '@/lib/price';
 import { cn, formatVND } from '@/lib/utils';
@@ -17,11 +19,39 @@ interface ProductOptionsProps {
   product: Product;
   /** Called with the chosen options. Cart wiring is added in Task 5. */
   onAdd?: (selection: ProductSelection) => void;
+  /** Shows the "Added" confirmation state on the submit button. */
+  justAdded?: boolean;
+  /** Ref to the submit button, used as the origin of the fly-to-cart animation. */
+  submitRef?: React.Ref<HTMLButtonElement>;
+}
+
+function AddButtonLabel({ added }: { added: boolean }) {
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.span
+        key={added ? 'added' : 'add'}
+        className="inline-flex items-center gap-2"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+      >
+        {added ? (
+          <>
+            <Check className="h-4 w-4" aria-hidden />
+            Added
+          </>
+        ) : (
+          'Add to cart'
+        )}
+      </motion.span>
+    </AnimatePresence>
+  );
 }
 
 const MIN_QTY = 1;
 
-export function ProductOptions({ product, onAdd }: ProductOptionsProps) {
+export function ProductOptions({ product, onAdd, justAdded = false, submitRef }: ProductOptionsProps) {
   const uid = useId();
   const soldOut = !product.available || product.stock <= 0;
   const maxQty = Math.max(product.stock, MIN_QTY);
@@ -169,8 +199,14 @@ export function ProductOptions({ product, onAdd }: ProductOptionsProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" size="default" disabled={soldOut}>
-          {soldOut ? 'Sold out' : 'Add to cart'}
+        <Button
+          ref={submitRef}
+          type="submit"
+          size="default"
+          disabled={soldOut}
+          className={cn(justAdded && !soldOut && 'bg-accent text-primary-foreground hover:bg-accent')}
+        >
+          {soldOut ? 'Sold out' : <AddButtonLabel added={justAdded} />}
         </Button>
         {soldOut && <p className="text-sm text-muted-foreground">This item is currently unavailable.</p>}
       </div>

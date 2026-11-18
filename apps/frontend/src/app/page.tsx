@@ -9,11 +9,10 @@ import { GalleryStrip } from '@/components/landing/gallery-strip';
 import { Events } from '@/components/landing/events';
 import { Testimonials } from '@/components/landing/testimonials';
 import { FindUs } from '@/components/landing/find-us';
-import { MotionProvider } from '@/components/shared/motion-provider';
 
 export default function HomePage() {
   return (
-    <MotionProvider>
+    <>
       <Navbar />
       <main>
         <Hero />
@@ -27,6 +26,6 @@ export default function HomePage() {
         <FindUs />
       </main>
       <Footer />
-    </MotionProvider>
+    </>
   );
 }

@@ -17,6 +17,26 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum VoucherType {
+  PERCENT
+  FIXED
+}
+
+model Voucher {
+  id          String      @id @default(cuid())
+  // Stored uppercase; the API normalizes voucherCode before lookup.
+  code        String      @unique
+  type        VoucherType
+  value       Int
+  minSubtotal Int         @default(0)
+  // Caps a PERCENT discount only.
+  maxDiscount Int?
+  expiresAt   DateTime?
+  active      Boolean     @default(true)
+  usageLimit  Int?
+  usedCount   Int         @default(0)
+}
+
 model Product {
   id          String  @id
   name        String
@@ -50,10 +70,17 @@ model Order {
   note        String?
   discount    Int         @default(0)
   voucherCode String?
+  // Loyalty points granted when the order became PAID; deducted again if the order is cancelled.
+  pointsEarned Int        @default(0)
   version     Int         @default(0)
+  // Idempotency-Key from POST /api/orders and a hash of the request body it was used with.
+  idempotencyKey String?
+  requestHash    String?
   createdAt   DateTime    @default(now())
   items       OrderItem[]
   payments    Payment[]
+
+  @@unique([userId, idempotencyKey])
 }
 
 model OrderItem {
@@ -77,5 +104,9 @@ model Payment {
   method         String
   // status: PROCESSING | SUCCESS | FAILED. A partial unique index allows only one PROCESSING row per order (see migration 20261024180000).
   status         String
+  // Hash of {orderId, method, card last 4} used to detect Idempotency-Key reuse with another body.
+  requestHash    String?
+  // Why a FAILED payment failed; replayed in the 402 body for the same Idempotency-Key.
+  failureReason  String?
   createdAt      DateTime @default(now())
 }

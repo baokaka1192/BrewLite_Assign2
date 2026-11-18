@@ -1,4 +1,5 @@
 import { execSync } from 'child_process';
+import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -8,10 +9,13 @@ import configuration from '../src/config/configuration';
 import { AuthModule } from '../src/modules/auth/auth.module';
 import { OrdersModule } from '../src/modules/orders/orders.module';
 import { PaymentsModule } from '../src/modules/payments/payments.module';
+import { MockPaymentGateway } from '../src/modules/payments/mock-payment.gateway';
 import { PrismaModule } from '../src/prisma/prisma.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 const BACKEND_DIR = path.resolve(__dirname, '..');
+/** Fresh Idempotency-Key per request so tests do not replay each other. */
+const newKey = () => `key-${randomUUID()}`;
 const TEST_DATABASE_URL =
   process.env.DATABASE_URL_TEST ?? 'postgresql://brewlite:brewlite@localhost:5432/brewlite_test';
 
@@ -25,6 +29,7 @@ describe('Payments (e2e)', () => {
   const createOrder = async (accessToken = token) => {
     const res = await request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ items: [{ productId: coffeeId, qty: 1 }] })
       .expect(201);
@@ -81,6 +86,7 @@ describe('Payments (e2e)', () => {
     const order = await createOrder();
     await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .send({ orderId: order.id, method: 'WALLET' })
       .expect(401);
   });
@@ -89,6 +95,7 @@ describe('Payments (e2e)', () => {
     const order = await createOrder();
     await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ orderId: order.id, method: 'CASH' })
       .expect(400);
@@ -98,6 +105,7 @@ describe('Payments (e2e)', () => {
     const order = await createOrder();
     const res = await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ orderId: order.id, method: 'WALLET' })
       .expect(201);
@@ -113,6 +121,7 @@ describe('Payments (e2e)', () => {
     const order = await createOrder();
     const res = await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ orderId: order.id, method: 'CARD', cardNumber: '4111111111110000' })
       .expect(402);
@@ -132,12 +141,14 @@ describe('Payments (e2e)', () => {
     const order = await createOrder();
     await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ orderId: order.id, method: 'CARD', cardNumber: '4111111111110000' })
       .expect(402);
 
     await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ orderId: order.id, method: 'WALLET' })
       .expect(201);
@@ -150,12 +161,14 @@ describe('Payments (e2e)', () => {
     const order = await createOrder();
     await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ orderId: order.id, method: 'WALLET' })
       .expect(201);
 
     await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ orderId: order.id, method: 'WALLET' })
       .expect(409);
@@ -165,6 +178,7 @@ describe('Payments (e2e)', () => {
     const order = await createOrder(otherToken);
     await request(app.getHttpServer())
       .post('/api/payments')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ orderId: order.id, method: 'WALLET' })
       .expect(404);
@@ -178,6 +192,7 @@ describe('Payments (e2e)', () => {
     const pay = () =>
       request(app.getHttpServer())
         .post('/api/payments')
+        .set('Idempotency-Key', newKey())
         .set('Authorization', `Bearer ${token}`)
         .send({ orderId: order.id, method: 'WALLET' });
 
@@ -193,6 +208,7 @@ describe('Payments (e2e)', () => {
     const pay = () =>
       request(app.getHttpServer())
         .post('/api/payments')
+        .set('Idempotency-Key', newKey())
         .set('Authorization', `Bearer ${token}`)
         .send({ orderId: order.id, method: 'WALLET' });
 
@@ -206,8 +222,8 @@ describe('Payments (e2e)', () => {
     expect(payments[0].status).toBe('SUCCESS');
   });
 
-  it('duplicate Idempotency-Key returns 409 instead of 500', async () => {
-    const key = `dup-${Date.now()}`;
+  it('same Idempotency-Key on another order returns 422 and pays nothing', async () => {
+    const key = newKey();
     const first = await createOrder();
     const second = await createOrder();
     await request(app.getHttpServer())
@@ -222,9 +238,114 @@ describe('Payments (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .set('Idempotency-Key', key)
       .send({ orderId: second.id, method: 'WALLET' })
-      .expect(409);
+      .expect(422);
 
     const stored = await prisma.order.findUniqueOrThrow({ where: { id: second.id } });
     expect(stored.status).toBe('PENDING');
+  });
+
+  describe('Idempotency-Key replay', () => {
+    const payWith = (accessToken: string, key: string, body: Record<string, unknown>) =>
+      request(app.getHttpServer())
+        .post('/api/payments')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('Idempotency-Key', key)
+        .send(body);
+
+    it('returns 400 when the Idempotency-Key header is missing', async () => {
+      const order = await createOrder();
+      await request(app.getHttpServer())
+        .post('/api/payments')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ orderId: order.id, method: 'WALLET' })
+        .expect(400);
+    });
+
+    it('returns 400 for a malformed Idempotency-Key', async () => {
+      const order = await createOrder();
+      await payWith(token, 'short', { orderId: order.id, method: 'WALLET' }).expect(400);
+      await payWith(token, 'bad key with spaces!', { orderId: order.id, method: 'WALLET' }).expect(400);
+    });
+
+    it('same key twice: one Payment row, order paid once, second call replays without a gateway call', async () => {
+      const order = await createOrder();
+      const gateway = app.get(MockPaymentGateway);
+      const spy = jest.spyOn(gateway, 'charge');
+      const key = newKey();
+
+      const first = await payWith(token, key, { orderId: order.id, method: 'WALLET' }).expect(201);
+      const second = await payWith(token, key, { orderId: order.id, method: 'WALLET' }).expect(200);
+
+      expect(second.headers['idempotency-replayed']).toBe('true');
+      expect(second.body.payment.id).toBe(first.body.payment.id);
+      expect(second.body.order).toEqual({ id: order.id, status: 'PAID' });
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+
+      const payments = await prisma.payment.findMany({ where: { orderId: order.id } });
+      expect(payments).toHaveLength(1);
+      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(stored.status).toBe('PAID');
+    });
+
+    it('replays a stored decline as the same 402 body without charging again', async () => {
+      const order = await createOrder();
+      const gateway = app.get(MockPaymentGateway);
+      const spy = jest.spyOn(gateway, 'charge');
+      const key = newKey();
+      const body = { orderId: order.id, method: 'CARD', cardNumber: '4111111111110000' };
+
+      await payWith(token, key, body).expect(402);
+      const replay = await payWith(token, key, body).expect(402);
+
+      expect(replay.body).toEqual(expect.objectContaining({ reason: 'Card declined', order: { id: order.id, status: 'PAYMENT_FAILED' } }));
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+      const payments = await prisma.payment.findMany({ where: { orderId: order.id } });
+      expect(payments).toHaveLength(1);
+    });
+
+    it('same key with a different body returns 422 and does not charge', async () => {
+      const order = await createOrder();
+      const gateway = app.get(MockPaymentGateway);
+      const spy = jest.spyOn(gateway, 'charge');
+      const key = newKey();
+
+      await payWith(token, key, { orderId: order.id, method: 'WALLET' }).expect(201);
+      await payWith(token, key, { orderId: order.id, method: 'CARD', cardNumber: '4111111111111111' }).expect(422);
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+    });
+
+    it("another user's Idempotency-Key answers 409 without revealing the order", async () => {
+      const order = await createOrder();
+      const key = newKey();
+      await payWith(token, key, { orderId: order.id, method: 'WALLET' }).expect(201);
+
+      const other = await createOrder(otherToken);
+      const res = await payWith(otherToken, key, { orderId: other.id, method: 'WALLET' }).expect(409);
+      expect(JSON.stringify(res.body)).not.toContain(order.id);
+    });
+
+    it('a PROCESSING row older than 2 minutes is reaped (FAILED) and the payment proceeds', async () => {
+      const order = await createOrder();
+      const stale = await prisma.payment.create({
+        data: {
+          orderId: order.id,
+          idempotencyKey: `stale-${randomUUID()}`,
+          amount: order.total,
+          method: 'WALLET',
+          status: 'PROCESSING',
+          createdAt: new Date(Date.now() - 5 * 60_000),
+        },
+      });
+
+      const res = await payWith(token, newKey(), { orderId: order.id, method: 'WALLET' }).expect(201);
+
+      expect(res.body.order).toEqual({ id: order.id, status: 'PAID' });
+      const reaped = await prisma.payment.findUniqueOrThrow({ where: { id: stale.id } });
+      expect(reaped.status).toBe('FAILED');
+    });
   });
 });
