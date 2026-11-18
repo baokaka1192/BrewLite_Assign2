@@ -1,4 +1,6 @@
+import { OrderStatus } from '@prisma/client';
 import { execSync } from 'child_process';
+import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -11,6 +13,9 @@ import { PrismaModule } from '../src/prisma/prisma.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 const BACKEND_DIR = path.resolve(__dirname, '..');
+/** Fresh Idempotency-Key per request so tests do not replay each other. */
+const newKey = () => `key-${randomUUID()}`;
+const STAFF_KEY = 'orders-e2e-staff-key';
 const TEST_DATABASE_URL =
   process.env.DATABASE_URL_TEST ?? 'postgresql://brewlite:brewlite@localhost:5432/brewlite_test';
 
@@ -28,6 +33,7 @@ describe('Orders (e2e)', () => {
 
   beforeAll(async () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
+    process.env.STAFF_API_KEY = STAFF_KEY;
     const env = { ...process.env, DATABASE_URL: TEST_DATABASE_URL };
     execSync('npx prisma migrate deploy', { cwd: BACKEND_DIR, env, stdio: 'inherit' });
     execSync('npx prisma db seed', { cwd: BACKEND_DIR, env, stdio: 'inherit' });
@@ -70,12 +76,14 @@ describe('Orders (e2e)', () => {
   }, 120_000);
 
   afterAll(async () => {
+    delete process.env.STAFF_API_KEY;
     await app.close();
   });
 
   it('POST /api/orders returns 401 without a token', () => {
     return request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .send({ items: [{ productId: coffeeId, qty: 1 }] })
       .expect(401);
   });
@@ -83,6 +91,7 @@ describe('Orders (e2e)', () => {
   it('POST /api/orders returns 201 with PENDING status and server-computed total', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({
         items: [{ productId: coffeeId, size: 'M', toppingIds: [toppingId], qty: 2 }],
@@ -109,20 +118,23 @@ describe('Orders (e2e)', () => {
     expect(stored.note).toBe('ít đá');
   });
 
-  it('POST /api/orders does not decrement stock', async () => {
+  it('POST /api/orders reserves stock (decrements by qty)', async () => {
     const before = await prisma.product.findUniqueOrThrow({ where: { id: pastryId } });
     await request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ items: [{ productId: pastryId, qty: 1 }] })
       .expect(201);
     const after = await prisma.product.findUniqueOrThrow({ where: { id: pastryId } });
-    expect(after.stock).toBe(before.stock);
+    expect(after.stock).toBe(before.stock - 1);
+    expect(after.version).toBe(before.version + 1);
   });
 
   it('POST /api/orders returns 400 for empty items', () => {
     return request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ items: [] })
       .expect(400);
@@ -131,6 +143,7 @@ describe('Orders (e2e)', () => {
   it('POST /api/orders returns 400 for qty 0', () => {
     return request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ items: [{ productId: coffeeId, qty: 0 }] })
       .expect(400);
@@ -139,6 +152,7 @@ describe('Orders (e2e)', () => {
   it('POST /api/orders returns 400 for invalid size', () => {
     return request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ items: [{ productId: coffeeId, size: 'XXL', qty: 1 }] })
       .expect(400);
@@ -148,6 +162,7 @@ describe('Orders (e2e)', () => {
     const toppingIds = Array.from({ length: 11 }, (_, i) => `t${i}`);
     return request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ items: [{ productId: coffeeId, toppingIds, qty: 1 }] })
       .expect(400);
@@ -156,6 +171,7 @@ describe('Orders (e2e)', () => {
   it('POST /api/orders returns 400 for unknown fields', () => {
     return request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ items: [{ productId: coffeeId, qty: 1 }], total: 1 })
       .expect(400);
@@ -164,6 +180,7 @@ describe('Orders (e2e)', () => {
   it('POST /api/orders returns 404 for unknown product', () => {
     return request(app.getHttpServer())
       .post('/api/orders')
+      .set('Idempotency-Key', newKey())
       .set('Authorization', `Bearer ${token}`)
       .send({ items: [{ productId: 'unknown-id', qty: 1 }] })
       .expect(404);
@@ -178,6 +195,7 @@ describe('Orders (e2e)', () => {
     const placeOrder = (accessToken: string) =>
       request(app.getHttpServer())
         .post('/api/orders')
+        .set('Idempotency-Key', newKey())
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ items: [{ productId: pastryId, qty: 1 }] })
         .expect(201);
@@ -341,6 +359,188 @@ describe('Orders (e2e)', () => {
         .get('/api/orders/does-not-exist')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
+    });
+  });
+
+  describe('order state machine (e2e)', () => {
+    let stateToken: string;
+    let stateOtherToken: string;
+
+    const cartBody = () => ({ items: [{ productId: coffeeId, qty: 1 }] });
+    const postOrder = (accessToken: string, key: string, body: object = cartBody()) =>
+      request(app.getHttpServer())
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('Idempotency-Key', key)
+        .send(body);
+    const createOrder = async (accessToken = stateToken) =>
+      (await postOrder(accessToken, newKey()).expect(201)).body as { id: string };
+    const advance = (orderId: string, status: string, staffKey = STAFF_KEY) =>
+      request(app.getHttpServer())
+        .patch(`/api/orders/${orderId}/status`)
+        .set('X-Staff-Key', staffKey)
+        .send({ status });
+    const cancel = (orderId: string, accessToken = stateToken) =>
+      request(app.getHttpServer())
+        .post(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${accessToken}`);
+    const setStatus = (orderId: string, status: OrderStatus) =>
+      prisma.order.update({ where: { id: orderId }, data: { status } });
+
+    beforeAll(async () => {
+      const a = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: `orders-state-${Date.now()}@example.com`, password: 'orders-password' })
+        .expect(201);
+      stateToken = a.body.accessToken;
+      const b = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: `orders-state-other-${Date.now()}@example.com`, password: 'orders-password' })
+        .expect(201);
+      stateOtherToken = b.body.accessToken;
+    });
+
+    it('blocks PENDING -> PREPARING through the status endpoint with 409', async () => {
+      const order = await createOrder();
+      const res = await advance(order.id, 'PREPARING').expect(409);
+      expect(res.body.message).toContain('PENDING -> PREPARING');
+      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(stored.status).toBe('PENDING');
+    });
+
+    it('COMPLETED is terminal: every status change and cancel answer 409', async () => {
+      const order = await createOrder();
+      await setStatus(order.id, 'COMPLETED');
+      for (const status of ['PREPARING', 'READY', 'COMPLETED']) {
+        await advance(order.id, status).expect(409);
+      }
+      await cancel(order.id).expect(409);
+    });
+
+    it('CANCELLED is terminal: no staff advancement and no second cancel', async () => {
+      const order = await createOrder();
+      await cancel(order.id).expect(200);
+      await advance(order.id, 'PREPARING').expect(409);
+      await cancel(order.id).expect(409);
+    });
+
+    it('staff advances PAID -> PREPARING -> READY -> COMPLETED', async () => {
+      const order = await createOrder();
+      await setStatus(order.id, 'PAID');
+      for (const status of ['PREPARING', 'READY', 'COMPLETED']) {
+        const res = await advance(order.id, status).expect(200);
+        expect(res.body.status).toBe(status);
+      }
+    });
+
+    it('the status endpoint refuses PAID and CANCELLED targets (400)', async () => {
+      const order = await createOrder();
+      await advance(order.id, 'PAID').expect(400);
+      await advance(order.id, 'CANCELLED').expect(400);
+    });
+
+    it('the status endpoint answers 403 without or with a wrong X-Staff-Key, and 404 when STAFF_API_KEY is unset', async () => {
+      const order = await createOrder();
+      await request(app.getHttpServer()).patch(`/api/orders/${order.id}/status`).send({ status: 'PREPARING' }).expect(403);
+      await advance(order.id, 'PREPARING', 'wrong-key').expect(403);
+
+      const saved = process.env.STAFF_API_KEY;
+      delete process.env.STAFF_API_KEY;
+      try {
+        await advance(order.id, 'PREPARING').expect(404);
+      } finally {
+        process.env.STAFF_API_KEY = saved;
+      }
+    });
+
+    it('owner cancels PENDING and PAID orders; the other user gets 404', async () => {
+      const pending = await createOrder();
+      await cancel(pending.id, stateOtherToken).expect(404);
+      const res = await cancel(pending.id).expect(200);
+      expect(res.body.status).toBe('CANCELLED');
+
+      const paid = await createOrder();
+      await setStatus(paid.id, 'PAID');
+      await cancel(paid.id).expect(200);
+    });
+
+    it('cancel is blocked from READY (409)', async () => {
+      const order = await createOrder();
+      await setStatus(order.id, 'READY');
+      await cancel(order.id).expect(409);
+    });
+  });
+
+  describe('Idempotency-Key on POST /api/orders', () => {
+    let idemToken: string;
+    let idemUserId: string;
+
+    const cartBody = () => ({ items: [{ productId: coffeeId, qty: 1 }] });
+    const postOrder = (accessToken: string, key: string, body: object = cartBody()) =>
+      request(app.getHttpServer())
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .set('Idempotency-Key', key)
+        .send(body);
+
+    beforeAll(async () => {
+      const reg = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: `orders-idem-${Date.now()}@example.com`, password: 'orders-password' })
+        .expect(201);
+      idemToken = reg.body.accessToken;
+      idemUserId = reg.body.user.id;
+    });
+
+    it('the same key twice creates ONE order: same id, second 200 with Idempotency-Replayed', async () => {
+      const key = newKey();
+      const first = await postOrder(idemToken, key).expect(201);
+      const second = await postOrder(idemToken, key).expect(200);
+
+      expect(second.headers['idempotency-replayed']).toBe('true');
+      expect(second.body.id).toBe(first.body.id);
+      expect(second.body.total).toBe(first.body.total);
+      expect(first.headers['idempotency-replayed']).toBeUndefined();
+      expect(await prisma.order.count({ where: { userId: idemUserId } })).toBe(1);
+    });
+
+    it('five concurrent identical requests create exactly one order', async () => {
+      const key = newKey();
+      const results = await Promise.all([1, 2, 3, 4, 5].map(() => postOrder(idemToken, key)));
+
+      expect(results.map((r) => r.status).filter((c) => c === 201)).toHaveLength(1);
+      expect(results.map((r) => r.status).filter((c) => c === 200)).toHaveLength(4);
+      expect(new Set(results.map((r) => r.body.id)).size).toBe(1);
+      expect(await prisma.order.count({ where: { idempotencyKey: key } })).toBe(1);
+    });
+
+    it('the same key with a different body returns 422 and creates nothing', async () => {
+      const key = newKey();
+      await postOrder(idemToken, key).expect(201);
+      await postOrder(idemToken, key, { items: [{ productId: pastryId, qty: 1 }] }).expect(422);
+
+      expect(await prisma.order.count({ where: { idempotencyKey: key } })).toBe(1);
+    });
+
+    it('the same key used by another user creates that user its own order', async () => {
+      const key = newKey();
+      const mine = await postOrder(idemToken, key).expect(201);
+      const other = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: `orders-idem-other-${Date.now()}@example.com`, password: 'orders-password' })
+        .expect(201);
+      const theirs = await postOrder(other.body.accessToken, key).expect(201);
+
+      expect(theirs.body.id).not.toBe(mine.body.id);
+    });
+
+    it('returns 400 when the Idempotency-Key header is missing or malformed', async () => {
+      await request(app.getHttpServer())
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${idemToken}`)
+        .send(cartBody())
+        .expect(400);
+      await postOrder(idemToken, 'short').expect(400);
     });
   });
 });
