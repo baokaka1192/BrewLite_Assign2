@@ -135,7 +135,23 @@ const SEED_PRODUCTS: Product[] = [
   },
 ];
 
+const SEED_VOUCHERS: Prisma.VoucherUncheckedCreateInput[] = [
+  { code: 'BREW10', type: 'PERCENT', value: 10, minSubtotal: 50000, maxDiscount: 30000 },
+  { code: 'WELCOME20K', type: 'FIXED', value: 20000, minSubtotal: 60000 },
+];
+
 async function main() {
+  for (const v of SEED_VOUCHERS) {
+    // Usage counters (usedCount) are not reset by the seed; only the rules are kept in sync.
+    const rules = { type: v.type, value: v.value, minSubtotal: v.minSubtotal, maxDiscount: v.maxDiscount ?? null, active: true };
+    await prisma.voucher.upsert({
+      where: { code: v.code },
+      create: { ...v, active: true },
+      update: rules,
+    });
+  }
+  console.log(`Seeded ${SEED_VOUCHERS.length} vouchers`);
+
   for (const p of SEED_PRODUCTS) {
     const data = {
       name: p.name,
