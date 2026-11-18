@@ -1,6 +1,8 @@
 'use client';
+import Link from 'next/link';
 import { useState } from 'react';
 import { Coffee, Menu, X } from 'lucide-react';
+import { AuthNav } from '@/components/auth/auth-nav';
 import { CartLink } from '@/components/cart/cart-link';
 import { Button } from '@/components/ui/button';
 import { brand, navLinks } from '@/content/landing';
@@ -11,21 +13,24 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-[10px]">
       <nav className="container-page flex h-16 items-center justify-between px-6 md:px-0" aria-label="Main">
-        <a href="#top" className="flex items-center gap-2">
+        <Link href="/#top" className="flex items-center gap-2">
           <Coffee className="h-4 w-4 text-accent" aria-hidden />
           <span className="font-display text-xl italic text-primary">{brand.name}</span>
-        </a>
+        </Link>
 
         <ul className="hidden items-center gap-8 md:flex">
           {navLinks.map((l) => (
             <li key={l.href}>
-              <a href={l.href} className="text-sm transition-colors duration-200 hover:text-accent">
+              <Link href={`/${l.href}`} className="text-sm transition-colors duration-200 hover:text-accent">
                 {l.label}
-              </a>
+              </Link>
             </li>
           ))}
           <li>
             <CartLink />
+          </li>
+          <li>
+            <AuthNav />
           </li>
           <li>
             <Button asChild size="sm">
@@ -48,11 +53,14 @@ export function Navbar() {
         <ul className="flex flex-col gap-4 border-t border-border px-6 py-6 md:hidden">
           {navLinks.map((l) => (
             <li key={l.href}>
-              <a href={l.href} onClick={() => setOpen(false)}>{l.label}</a>
+              <Link href={`/${l.href}`} onClick={() => setOpen(false)}>{l.label}</Link>
             </li>
           ))}
           <li>
             <CartLink onNavigate={() => setOpen(false)} />
+          </li>
+          <li>
+            <AuthNav onNavigate={() => setOpen(false)} />
           </li>
           <li>
             <Button asChild className="w-full">
