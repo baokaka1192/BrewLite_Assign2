@@ -1,51 +1,51 @@
 # BrewLite
 
-Cashless coffee ordering app — Software Engineering assignment (Saigon University, 2026–2027).
-Stack: **Next.js 14** (frontend) · **NestJS 10** (backend) · **PostgreSQL** · Docker Compose.
+Ứng dụng đặt cà phê không dùng tiền mặt, bài tập lớn môn Công nghệ phần mềm (Đại học Sài Gòn, 2026-2027).
+Công nghệ: **Next.js 14** (frontend), **NestJS 10** (backend), **PostgreSQL**, Docker Compose.
 
-## Folder structure
+## Cấu trúc thư mục
 
 ```
 brewlite/
 ├── apps/
-│   ├── backend/                    NestJS REST API  (http://localhost:4000/api)
+│   ├── backend/                    API REST bằng NestJS  (http://localhost:4000/api)
 │   │   ├── src/
-│   │   │   ├── main.ts             bootstrap: prefix /api, CORS, ValidationPipe
-│   │   │   ├── app.module.ts       root module
-│   │   │   ├── config/             typed env configuration
-│   │   │   ├── prisma/             global PrismaModule + PrismaService
-│   │   │   ├── common/             shared: decorators, filters, guards, interceptors, pipes
-│   │   │   └── modules/            one folder per feature (controller, service, dto, entity)
-│   │   │       ├── auth/           Task 7   register / login / JWT
+│   │   │   ├── main.ts             khởi động: tiền tố /api, CORS, ValidationPipe
+│   │   │   ├── app.module.ts       module gốc
+│   │   │   ├── config/             cấu hình biến môi trường có kiểu
+│   │   │   ├── prisma/             PrismaModule và PrismaService dùng chung
+│   │   │   ├── common/             dùng chung: decorator, filter, guard, interceptor, pipe
+│   │   │   └── modules/            mỗi tính năng một thư mục (controller, service, dto, entity)
+│   │   │       ├── auth/           Task 7   đăng ký, đăng nhập, JWT
 │   │   │       ├── users/          Task 7
 │   │   │       ├── products/       Task 2   GET /products
-│   │   │       ├── orders/         Task 6, 9, 10  state machine, history
-│   │   │       ├── payments/       Task 8, 10     mock gateway, idempotency
-│   │   │       └── promotions/     Task 10  vouchers, loyalty points
-│   │   ├── prisma/                 schema, migrations, seed.ts (Prisma + PostgreSQL)
-│   │   └── test/                   e2e tests
+│   │   │       ├── orders/         Task 6, 9, 10  máy trạng thái, lịch sử đơn
+│   │   │       ├── payments/       Task 8, 10     cổng thanh toán giả lập, idempotency
+│   │   │       └── promotions/     Task 10  voucher, điểm tích lũy
+│   │   ├── prisma/                 schema, migration, seed.ts (Prisma và PostgreSQL)
+│   │   └── test/                   test e2e
 │   └── frontend/                   Next.js App Router  (http://localhost:3000)
-│       ├── public/images/          photos for the landing page
+│       ├── public/images/          ảnh cho trang chủ
 │       └── src/
-│           ├── app/                routes: layout, page (landing), menu, later cart/checkout/orders
+│           ├── app/                route: layout, trang chủ, menu, sau này là giỏ hàng, thanh toán, đơn hàng
 │           ├── components/
-│           │   ├── ui/             base primitives (shadcn-style Button)
+│           │   ├── ui/             thành phần cơ bản (Button kiểu shadcn)
 │           │   ├── layout/         Navbar, Footer
-│           │   ├── landing/        one file per landing section
+│           │   ├── landing/        mỗi mục của trang chủ một file
 │           │   └── shared/         Reveal, AmberRule, Chip, ImageFrame, MotionProvider
-│           ├── features/           feature code per domain: menu, cart, auth, checkout, orders
-│           ├── content/            landing-page copy (edit text here, not in components)
-│           ├── lib/                api client, utils, formatVND
+│           ├── features/           mã theo từng nghiệp vụ: menu, giỏ hàng, đăng nhập, thanh toán, đơn hàng
+│           ├── content/            nội dung chữ của trang chủ (sửa chữ ở đây, không sửa trong component)
+│           ├── lib/                client gọi API, tiện ích, formatVND
 │           ├── hooks/ store/ types/
-├── docs/scrum/                     sprint plan, Definition of Done
-├── docker-compose.yml              db + backend + frontend
+├── docs/scrum/                     kế hoạch sprint, Definition of Done
+├── docker-compose.yml              db, backend, frontend
 ├── .env.example
-└── package.json                    helper scripts
+└── package.json                    các script hỗ trợ
 ```
 
-Rule of thumb: **routes in `app/`, UI pieces in `components/`, business code for one domain in `features/` (frontend) or `modules/` (backend).**
+Quy tắc chung: **route đặt trong `app/`, thành phần giao diện trong `components/`, mã nghiệp vụ của một tính năng trong `features/` (frontend) hoặc `modules/` (backend).**
 
-## Run locally
+## Chạy trên máy
 
 ```bash
 cp .env.example .env
@@ -54,85 +54,85 @@ npm run dev:backend      # http://localhost:4000/api  -> { "message": "Hello fro
 npm run dev:frontend     # http://localhost:3000
 ```
 
-The frontend calls the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api`); override it in `apps/frontend/.env.local` if the backend runs elsewhere.
+Frontend gọi API tại `NEXT_PUBLIC_API_URL` (mặc định `http://localhost:4000/api`). Nếu backend chạy ở nơi khác, ghi đè biến này trong `apps/frontend/.env.local`.
 
-## Database (PostgreSQL + Prisma)
+## Cơ sở dữ liệu (PostgreSQL và Prisma)
 
-The backend stores data in PostgreSQL through Prisma. Schema: `apps/backend/prisma/schema.prisma`.
+Backend lưu dữ liệu vào PostgreSQL qua Prisma. Schema nằm ở `apps/backend/prisma/schema.prisma`.
 
-Two databases live in the same compose Postgres container:
+Hai cơ sở dữ liệu cùng nằm trong một container Postgres của compose:
 
-| Env var | Database | Used by |
-| ------- | -------- | ------- |
-| `DATABASE_URL` | `brewlite` | dev server, `prisma migrate`, `prisma db seed` |
-| `DATABASE_URL_TEST` | `brewlite_test` | e2e tests only (migrated and seeded automatically) |
+| Biến môi trường | Cơ sở dữ liệu | Dùng cho |
+| --------------- | ------------- | -------- |
+| `DATABASE_URL` | `brewlite` | server dev, `prisma migrate`, `prisma db seed` |
+| `DATABASE_URL_TEST` | `brewlite_test` | chỉ dùng cho test e2e (tự migrate và seed) |
 
 ```bash
-cp .env.example .env                       # root (compose) and
-cp apps/backend/.env.example apps/backend/.env   # backend (Prisma CLI reads this one)
+cp .env.example .env                       # gốc (compose) và
+cp apps/backend/.env.example apps/backend/.env   # backend (Prisma CLI đọc file này)
 
-docker compose up -d db                    # Postgres 16 on localhost:5432, waits for healthcheck
+docker compose up -d db                    # Postgres 16 ở localhost:5432, chờ healthcheck
 cd apps/backend
 npm install
-npx prisma migrate dev                     # create/apply migrations locally (dev only)
-npx prisma migrate deploy                  # apply existing migrations (CI / fresh DB)
-npm run prisma:seed                        # upsert the 10 seed products (idempotent)
+npx prisma migrate dev                     # tạo và áp dụng migration ở máy dev (chỉ dùng khi phát triển)
+npx prisma migrate deploy                  # áp dụng các migration có sẵn (CI hoặc database mới)
+npm run prisma:seed                        # thêm 10 sản phẩm mẫu (chạy lại không bị trùng)
 ```
 
-`brewlite_test` is created by `docker/postgres/init/01-create-test-db.sql`, which only runs when the
-`db-data` volume is first created. If the volume already exists, create it once by hand:
+`brewlite_test` được tạo bởi `docker/postgres/init/01-create-test-db.sql`, file này chỉ chạy lần đầu khi volume `db-data` được tạo.
+Nếu volume đã có từ trước, tạo database này một lần bằng tay:
 
 ```bash
 docker compose exec db psql -U brewlite -d brewlite -c "CREATE DATABASE brewlite_test OWNER brewlite;"
 ```
 
-Reset the dev database (drops all data): `cd apps/backend && npx prisma migrate reset`.
+Đặt lại database dev (xóa toàn bộ dữ liệu): `cd apps/backend && npx prisma migrate reset`.
 
-## Tests
+## Kiểm thử
 
 ```bash
 cd apps/backend
-npm test            # unit tests, PrismaService is mocked (no database needed)
-npm run test:e2e    # needs the db container; migrates + seeds brewlite_test in beforeAll
-npm run build       # runs prisma generate, then nest build
+npm test            # unit test, PrismaService được mock (không cần database)
+npm run test:e2e    # cần container db; tự migrate và seed brewlite_test trong beforeAll
+npm run build       # chạy prisma generate rồi nest build
 ```
 
-`npm test`, `npm run build` and `npm run test:e2e` run `prisma generate` first, so the client is always in sync with the schema.
+`npm test`, `npm run build` và `npm run test:e2e` đều chạy `prisma generate` trước, nên Prisma client luôn khớp với schema.
 
-## API endpoints
+## Các endpoint API
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| GET | `/api/products` | List products. Optional `?category=coffee\|tea\|pastry` (400 on any other value). |
-| GET | `/api/products/:id` | Get one product, or 404 if it does not exist. |
-| POST | `/api/auth/register` | Register `{email, password (8-72 chars), name?}`. Email is lowercased. Returns 201 with `{user, accessToken}`; 400 on invalid input, 409 when the email is already registered. |
-| POST | `/api/auth/login` | Log in with `{email, password}`. Returns 200 with `{user, accessToken}`; 401 with the same message for unknown email or wrong password. |
-| GET | `/api/auth/me` | Current user profile. Requires `Authorization: Bearer <accessToken>`; 401 otherwise. |
-| POST | `/api/orders` | Create a PENDING order from a cart `{items:[{productId, size?, toppingIds?, qty}], note?}`. Requires `Authorization: Bearer <accessToken>` and sets the order's `userId` from the token (guest orders are no longer accepted). Totals are computed server-side. Returns 201 with the order id and total; 400 on invalid input, 401 without a valid token, 404 on unknown product, 409 when qty exceeds stock. |
-| POST | `/api/payments` | Mock payment for an order `{orderId, method: "WALLET"\|"CARD", cardNumber?}` (cardNumber is required for CARD, 12-19 digits). Requires `Authorization: Bearer <accessToken>`. Amount is always the order total from the DB. Returns 201 with `{payment, order:{id,status}}` and the order becomes PAID. Returns 402 with `{reason, payment, order}` and the order becomes PAYMENT_FAILED when the mock gateway declines (CARD ending in 0000, or WALLET over 5,000,000). Retry is allowed from PAYMENT_FAILED. 400 on invalid input, 401 without a valid token, 404 when the order is not the user's, 409 when the order is not PENDING or PAYMENT_FAILED. Optional `Idempotency-Key` header (stored only; replay semantics come in Task 10). |
+| Phương thức | Đường dẫn | Mô tả |
+| ----------- | --------- | ----- |
+| GET | `/api/products` | Danh sách sản phẩm. Tùy chọn `?category=coffee\|tea\|pastry` (giá trị khác trả 400). |
+| GET | `/api/products/:id` | Lấy một sản phẩm, trả 404 nếu không tồn tại. |
+| POST | `/api/auth/register` | Đăng ký `{email, password (8-72 ký tự), name?}`. Email được chuyển về chữ thường. Trả 201 với `{user, accessToken}`; 400 khi dữ liệu sai, 409 khi email đã đăng ký. |
+| POST | `/api/auth/login` | Đăng nhập với `{email, password}`. Trả 200 với `{user, accessToken}`; 401 với cùng một thông báo cho cả email không tồn tại lẫn sai mật khẩu. |
+| GET | `/api/auth/me` | Thông tin người dùng hiện tại. Cần `Authorization: Bearer <accessToken>`, nếu không trả 401. |
+| POST | `/api/orders` | Tạo đơn PENDING từ giỏ hàng `{items:[{productId, size?, toppingIds?, qty}], note?}`. Cần `Authorization: Bearer <accessToken>` và `userId` của đơn lấy từ token (không còn nhận đơn khách vãng lai). Tổng tiền tính ở server. Trả 201 với id và tổng tiền của đơn; 400 khi dữ liệu sai, 401 khi thiếu token hợp lệ, 404 khi sản phẩm không tồn tại, 409 khi số lượng vượt tồn kho. |
+| POST | `/api/payments` | Thanh toán giả lập cho một đơn `{orderId, method: "WALLET"\|"CARD", cardNumber?}` (với CARD bắt buộc có cardNumber, 12-19 chữ số). Cần `Authorization: Bearer <accessToken>`. Số tiền luôn là tổng tiền của đơn trong database. Trả 201 với `{payment, order:{id,status}}` và đơn chuyển sang PAID. Trả 402 với `{reason, payment, order}` và đơn chuyển sang PAYMENT_FAILED khi cổng giả lập từ chối (thẻ CARD kết thúc bằng 0000, hoặc WALLET trên 5.000.000). Được thử lại từ trạng thái PAYMENT_FAILED. 400 khi dữ liệu sai, 401 khi thiếu token hợp lệ, 404 khi đơn không thuộc người dùng, 409 khi đơn không ở trạng thái PENDING hoặc PAYMENT_FAILED. Header `Idempotency-Key` là tùy chọn (hiện chỉ lưu lại; cách xử lý lặp lại làm ở Task 10). |
 
-Auth environment variables (set in `apps/backend/.env`):
+Biến môi trường cho xác thực (đặt trong `apps/backend/.env`):
 
-| Env var | Default | Notes |
-| ------- | ------- | ----- |
-| `JWT_SECRET` | `dev-secret` outside production | Required when `NODE_ENV=production`; the backend refuses to start without it. |
-| `JWT_EXPIRES_IN` | `1d` | Token lifetime, passed to `jsonwebtoken` (e.g. `1h`, `7d`). |
+| Biến | Mặc định | Ghi chú |
+| ---- | -------- | ------- |
+| `JWT_SECRET` | `dev-secret` khi không phải production | Bắt buộc khi `NODE_ENV=production`; thiếu thì backend không khởi động. |
+| `JWT_EXPIRES_IN` | `1d` | Thời hạn token, truyền cho `jsonwebtoken` (ví dụ `1h`, `7d`). |
 
-Menu photos: Unsplash, credits in [apps/frontend/public/images/menu/CREDITS.md](apps/frontend/public/images/menu/CREDITS.md).
+Ảnh menu: lấy từ Unsplash, ghi nguồn tại [apps/frontend/public/images/menu/CREDITS.md](apps/frontend/public/images/menu/CREDITS.md).
 
-## Run with Docker
+## Chạy bằng Docker
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-## Design system
+## Hệ thống thiết kế
 
-Colors, fonts and tokens are in `apps/frontend/src/app/globals.css` and `tailwind.config.ts`
-(Playfair Display + DM Sans, espresso / amber / cream). Landing images are placeholders until files are
-added to `public/images` and passed as `src` to `ImageFrame`.
+Màu sắc, phông chữ và token nằm trong `apps/frontend/src/app/globals.css` và `tailwind.config.ts`
+(Playfair Display và DM Sans, tông espresso, amber, kem). Ảnh trang chủ hiện là ảnh tạm, sẽ thay khi
+thêm file vào `public/images` và truyền vào `src` của `ImageFrame`.
 
-## Git workflow
+## Quy trình Git
 
-Branch per task (`feat/task-02-products-api`), small commits, review before merging to `main`.
+Mỗi task một nhánh (`feat/task-02-products-api`), commit nhỏ, review trước khi merge vào `main`.
