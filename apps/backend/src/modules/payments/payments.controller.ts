@@ -1,18 +1,11 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Headers,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Headers, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { requireIdempotencyKey } from '../../common/idempotency';
 import { AuthUser } from '../auth/auth-user';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { PaymentResult, PaymentsService } from './payments.service';
-
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 @Controller('payments')
 export class PaymentsController {
@@ -20,14 +13,18 @@ export class PaymentsController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  pay(
+  async pay(
     @Body() dto: CreatePaymentDto,
     @CurrentUser() user: AuthUser,
-    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<PaymentResult> {
-    if (idempotencyKey !== undefined && !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
-      throw new BadRequestException('Idempotency-Key must be 1-128 characters of [A-Za-z0-9_-]');
+    const key = requireIdempotencyKey(idempotencyKey);
+    const { result, replayed } = await this.paymentsService.pay(dto, user.id, key);
+    if (replayed) {
+      res.status(HttpStatus.OK);
+      res.setHeader('Idempotency-Replayed', 'true');
     }
-    return this.paymentsService.pay(dto, user.id, idempotencyKey);
+    return result;
   }
 }
