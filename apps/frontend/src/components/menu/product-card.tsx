@@ -10,7 +10,7 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <Link
       href={`/menu/${product.id}`}
-      className="group flex flex-col border border-border bg-background transition-colors duration-200 hover:border-primary"
+      className="group flex flex-col border border-border bg-background transition-[transform,border-color] duration-200 ease-out hover:-translate-y-1 hover:border-primary motion-reduce:transform-none"
     >
       <div className="relative aspect-[4/3] overflow-hidden">
         {product.imageUrl ? (
@@ -19,7 +19,7 @@ export function ProductCard({ product }: { product: Product }) {
             alt={product.name}
             fill
             sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 100vw"
-            className={`object-cover transition-transform duration-200 ease-out group-hover:scale-[1.02] ${soldOut ? 'grayscale' : ''}`}
+            className={`object-cover transition-transform duration-200 ease-out group-hover:scale-105 motion-reduce:group-hover:scale-100 ${soldOut ? 'grayscale' : ''}`}
           />
         ) : (
           <ImageFrame alt={product.name} brief={product.name} className="h-full w-full" />

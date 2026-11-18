@@ -1,4 +1,6 @@
+'use client';
 import Link from 'next/link';
+import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { PRODUCT_CATEGORIES, type ProductCategory } from '@/types/product';
 
@@ -19,10 +21,18 @@ export function CategoryFilter({ active }: { active?: ProductCategory }) {
             aria-current={isActive ? 'page' : undefined}
             scroll={false}
             className={cn(
-              'border px-4 py-2 text-sm font-medium transition-colors duration-200',
-              isActive ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary',
+              'relative isolate border px-4 py-2 text-sm font-medium transition-colors duration-200',
+              isActive ? 'border-primary text-primary-foreground' : 'border-border hover:border-primary',
             )}
           >
+            {isActive && (
+              <motion.span
+                layoutId="category-indicator"
+                aria-hidden="true"
+                className="absolute inset-0 -z-10 bg-primary"
+                transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+              />
+            )}
             {f.label}
           </Link>
         );

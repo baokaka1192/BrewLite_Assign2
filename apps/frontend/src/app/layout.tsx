@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { MotionProvider } from '@/components/shared/motion-provider';
 import { ScrollToTopOnReload } from '@/components/shared/scroll-to-top-on-reload';
 
 export const metadata: Metadata = {
@@ -20,7 +21,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ScrollToTopOnReload />
-        {children}
+        {/* Wraps every route, including portal-rendered layers (fly-to-cart), so reduced motion applies globally. */}
+        <MotionProvider>{children}</MotionProvider>
       </body>
     </html>
   );

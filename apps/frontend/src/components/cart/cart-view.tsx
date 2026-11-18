@@ -2,8 +2,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { ImageFrame } from '@/components/shared/image-frame';
+import { RollValue } from '@/components/shared/roll-value';
 import { formatVND } from '@/lib/utils';
 import { subtotal, useCartStore, type CartLine } from '@/store/cart';
 
@@ -31,15 +33,19 @@ export function CartView() {
   return (
     <div className="grid gap-12 md:grid-cols-[1fr_20rem]">
       <ul className="divide-y divide-border border-y border-border">
-        {lines.map((line) => (
-          <CartLineItem key={line.key} line={line} />
-        ))}
+        <AnimatePresence initial={false}>
+          {lines.map((line) => (
+            <CartLineItem key={line.key} line={line} />
+          ))}
+        </AnimatePresence>
       </ul>
 
       <aside className="h-fit space-y-6 border border-border p-6">
         <p className="flex items-baseline justify-between text-xl font-semibold">
           <span>Subtotal</span>
-          <span data-testid="cart-subtotal">{formatVND(total)}</span>
+          <span data-testid="cart-subtotal">
+            <RollValue value={formatVND(total)} />
+          </span>
         </p>
         <Button asChild className="w-full">
           <Link href="/checkout">Checkout</Link>
@@ -58,7 +64,14 @@ function CartLineItem({ line }: { line: CartLine }) {
   const options = [line.sizeCode, ...line.toppingNames].filter(Boolean).join(' · ');
 
   return (
-    <li className="flex gap-4 py-6">
+    <motion.li
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: -24, pointerEvents: 'none' }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className="flex gap-4 py-6"
+    >
       <div className="relative h-24 w-24 shrink-0 overflow-hidden border border-border">
         {line.imageUrl ? (
           <Image src={line.imageUrl} alt={line.name} fill sizes="96px" className="object-cover" />
@@ -88,7 +101,9 @@ function CartLineItem({ line }: { line: CartLine }) {
             >
               −
             </Button>
-            <span className="w-8 text-center text-sm" aria-live="polite">{line.qty}</span>
+            <span aria-live="polite" className="w-8 text-sm">
+              <RollValue value={line.qty} className="w-full justify-center" />
+            </span>
             <Button
               type="button"
               variant="ghost"
@@ -110,6 +125,6 @@ function CartLineItem({ line }: { line: CartLine }) {
           </button>
         </div>
       </div>
-    </li>
+    </motion.li>
   );
 }
