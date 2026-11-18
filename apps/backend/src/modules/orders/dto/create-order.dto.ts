@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayNotEmpty,
@@ -51,4 +51,11 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(200)
   note?: string;
+
+  /** Optional discount code. Trimmed and uppercased before validation. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  voucherCode?: string;
 }
