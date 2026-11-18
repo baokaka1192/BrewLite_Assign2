@@ -1,0 +1,64 @@
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam defaultFontName SansSerif
+skinparam wrapWidth 190
+actor "Khách hàng" as Customer
+actor "Cổng thanh toán\nVí/Thẻ giả lập" as Gateway
+actor "Nhân viên quầy\n(API mở rộng)" as Staff
+
+rectangle "BrewLite" {
+  usecase "Xem menu\nFR-01" as Menu
+  usecase "Xem chi tiết, chọn\nsize/topping\nFR-02" as Detail
+  usecase "Quản lý giỏ hàng\nFR-03" as Cart
+  usecase "Đăng ký / đăng nhập\nKiểm tra phiên\nFR-04" as Auth
+  usecase "Đăng nhập Google\nCould - FR-13" as Google
+
+  rectangle "Phạm vi UC-01" {
+    usecase "Đặt và thanh toán\nđơn hàng" as Checkout
+    usecase "Xem báo giá\nFR-05" as Quote
+    usecase "Tạo đơn và giữ kho\nChống tạo trùng\nFR-06, FR-07" as Create
+    usecase "Thanh toán giả lập\nCho phép thử lại\nFR-08" as Pay
+  }
+
+  usecase "Xem xác nhận, lịch sử\nvà trạng thái đơn của mình\nFR-09" as History
+  usecase "Hủy đơn\nShould - FR-11" as Cancel
+  usecase "Áp dụng voucher\nShould - FR-12" as Voucher
+  usecase "Ghi nhận điểm\nkhi thanh toán thành công\nShould - FR-12" as Points
+  usecase "Cập nhật trạng thái\nphục vụ qua API\nShould - FR-10" as Status
+}
+
+Customer -- Menu
+Customer -- Detail
+Customer -- Cart
+Customer -- Auth
+Customer -- Google
+Customer -- Checkout
+Customer -- History
+Customer -- Cancel
+Staff -- Status
+Gateway -- Pay
+Checkout ..> Quote : <<include>>
+Checkout ..> Create : <<include>>
+Checkout ..> Pay : <<include>>
+Voucher ..> Quote : <<extend>>\n[khách nhập mã]
+Points ..> Pay : <<extend>>\n[thanh toán thành công]
+
+note bottom of Checkout
+  Tiền điều kiện khi gửi đơn: đã đăng nhập,
+  giỏ hợp lệ. Xem menu, chọn món và xác thực
+  là các bước chuẩn bị, không thanh toán lại
+  khi chỉ xem lịch sử.
+end note
+
+note bottom of Status
+  PAID -> PREPARING -> READY -> COMPLETED.
+  Chưa có giao diện barista trong MVP.
+end note
+
+note bottom of Gateway
+  Không chuyển tiền thật, không hoàn tiền.
+  Cổng giả lập là actor hỗ trợ logic.
+end note
+@enduml

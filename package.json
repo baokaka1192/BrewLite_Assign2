@@ -3,11 +3,12 @@
   "private": true,
   "description": "BrewLite - cashless coffee ordering app (Software Engineering assignment)",
   "scripts": {
-    "install:all": "npm --prefix apps/backend install && npm --prefix apps/frontend install",
-    "dev:backend": "npm --prefix apps/backend run start:dev",
-    "dev:frontend": "npm --prefix apps/frontend run dev",
-    "build": "npm --prefix apps/backend run build && npm --prefix apps/frontend run build",
-    "test": "npm --prefix apps/backend test",
+    "install:all": "npm --prefix apps/api install && npm --prefix apps/web install",
+    "dev:backend": "npm --prefix apps/api run start:dev",
+    "dev:frontend": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/api run build && npm --prefix apps/web run build",
+    "test": "npm --prefix apps/api test",
+    "test:system": "node --test tests/*/*.test.mjs",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"
   }

@@ -1,0 +1,156 @@
+@startuml
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam defaultFontName SansSerif
+skinparam sequenceMessageAlign center
+hide footbox
+title BrewLite — UC-01: Đặt và thanh toán đơn hàng
+actor Customer
+participant "Next.js UI" as UI
+participant "NestJS API" as API
+database Database as DB
+participant "Payment Service\n(giả lập)" as PS
+note over UI, API
+  Địa chỉ gốc: http://localhost:4000/api.
+  Các đường dẫn bên dưới theo mục Danh sách API trong README.
+end note
+Customer -> UI : Xem menu và chi tiết, chọn món
+UI -> API : GET /products
+API -> DB : Đọc danh sách sản phẩm
+DB --> API : Sản phẩm, giá, tồn kho
+API --> UI : 200 — menu
+UI -> API : GET /products/:id
+API -> DB : Đọc sản phẩm và tùy chọn
+DB --> API : Chi tiết sản phẩm
+API --> UI : 200 — chi tiết (404 nếu không có)
+Customer -> UI : Thêm món, kiểm tra giỏ và thanh toán
+note right of UI : Giỏ lưu tại trình duyệt.
+opt Chưa đăng nhập / hết phiên
+  Customer -> UI : Nhập email, mật khẩu
+  UI -> API : POST /auth/login {email, password}
+  API -> API : Validate dữ liệu
+  API -> DB : Đọc User, đối chiếu mật khẩu
+  DB --> API : User
+  API --> UI : 200 {user, accessToken} hoặc 401
+  break Đăng nhập thất bại / chưa có phiên hợp lệ
+    UI --> Customer : Báo lỗi, giữ giỏ; kết thúc lần thao tác, cho thử lại
+  end
+  UI --> Customer : Quay lại thanh toán sau đăng nhập thành công
+end
+UI -> API : POST /orders/quote + Bearer\n{items, note?, voucherCode?}
+API -> API : Kiểm tra JWT; validate giỏ và tùy chọn
+API -> DB : Đọc Product, Voucher nếu có; tính tiền
+DB --> API : Giá và thông tin đối chiếu
+API --> UI : 200 {subtotal, discount, total, voucher, pointsToEarn}
+note over UI, API
+  Yêu cầu cần phiên: thiếu/sai JWT trả 401, quay lại đăng nhập.
+  Dữ liệu sai/voucher lỗi trả 400; món không có trả 404; hết hàng trả 409.
+  Chỉ tiếp tục khi báo giá hợp lệ; báo giá không ghi database, không giữ kho.
+end note
+break Báo giá lỗi / JWT không hợp lệ
+  UI --> Customer : Báo lỗi; sửa giỏ/voucher hoặc đăng nhập lại, chưa tạo đơn
+end
+UI --> Customer : Hiển thị báo giá
+Customer -> UI : Xác nhận; chọn WALLET hoặc CARD
+UI -> API : POST /orders + Bearer + Idempotency-Key: orderKey\n{items, note?, voucherCode?}
+API -> API : Kiểm tra JWT, validate; tính requestHash
+API -> DB : Tìm Order theo (userId, orderKey)
+DB --> API : Đơn đã có hoặc chưa có
+alt Key đã tồn tại
+  API -> API : So sánh requestHash
+  API --> UI : 200 — đơn cũ nếu cùng nội dung; 422 nếu khác
+  note over API, DB : Cùng key/nội dung không tạo đơn hoặc giữ kho thêm.
+else Key mới
+  group Transaction tạo đơn và giữ kho
+    API -> DB : BEGIN; đọc sản phẩm, kiểm tra lại giá/voucher
+    DB --> API : Giá, stock, version
+    API -> DB : Trừ stock theo version, tăng version;\navailable=false nếu stock về 0; ghi voucher nếu áp dụng
+    note right of DB
+      Xung đột version: đọc lại, thử tối đa 5 lần.
+      Hết hàng/hết lượt thử: rollback toàn bộ.
+    end note
+    alt Giữ kho và dữ liệu hợp lệ
+      API -> DB : Tạo Order PENDING, OrderItem; lưu key và requestHash
+      API -> DB : COMMIT
+      DB --> API : Đơn đã tạo
+    else Hết hàng / hết lượt thử / dữ liệu sai
+      API -> DB : ROLLBACK toàn bộ
+      DB --> API : Lỗi; không lưu đơn hoặc trừ kho một phần
+    end
+  end
+  API --> UI : 201 — orderId, PENDING; hoặc 409 hết hàng/xung đột
+end
+break Không tạo được đơn / key khác nội dung
+  UI --> Customer : Báo lỗi; sửa giỏ hoặc kiểm tra đơn cũ, chưa thanh toán
+end
+alt Đơn PENDING hoặc PAYMENT_FAILED
+  UI -> API : POST /payments + Bearer + Idempotency-Key: paymentKey\n{orderId, method, cardNumber?}
+  API -> API : Kiểm tra JWT, validate; tính requestHash
+  API -> DB : Tìm Payment theo paymentKey, đối chiếu chủ đơn/nội dung
+  DB --> API : Kết quả tra cứu
+  alt Gửi lại key đã có
+    API --> UI : Cùng nội dung: trả kết quả lưu (200 SUCCESS / 402 FAILED);\n409 nếu PROCESSING; 422 nếu khác nội dung
+    note over API, PS
+      Không gọi cổng hoặc cộng điểm lại.
+      Key của người khác trả 409, không lộ đơn.
+    end note
+  else Key thanh toán mới
+    API -> DB : Đọc Order của khách, trạng thái và total
+    DB --> API : Đơn hợp lệ và tổng tiền
+    API -> API : Kiểm tra cho phép thanh toán, số thẻ nếu CARD
+    group Transaction nhận quyền xử lý thanh toán
+      API -> DB : Kiểm tra version; tạo Payment PROCESSING;\nPAYMENT_FAILED -> PENDING nếu thử lại; COMMIT
+      DB --> API : Đã nhận quyền hoặc 409 xung đột
+    end
+    break Không nhận được quyền xử lý / đơn không hợp lệ
+      API --> UI : 409 (hoặc 404 nếu không phải đơn của khách)
+      UI --> Customer : Báo lỗi, đọc lại trạng thái; chưa xác nhận thành công
+    end
+    API -> PS : charge(amount = Order.total, method, cardNumber?)
+    PS --> API : Kết quả thanh toán giả lập
+    alt Thanh toán thành công
+      group Transaction xác nhận
+        API -> DB : Payment.status = SUCCESS; Order.status = PAID;\nOrder.pointsEarned = floor(total / 10000);\ncộng User.loyaltyPoints đúng một lần; COMMIT
+        DB --> API : Kết quả đã lưu
+      end
+      API --> UI : 201 — Payment SUCCESS, Order PAID
+    else Thanh toán bị từ chối
+      group Transaction ghi nhận thất bại
+        API -> DB : Payment.status = FAILED, failureReason;\nOrder.status = PAYMENT_FAILED; COMMIT
+        DB --> API : Kết quả đã lưu, kho vẫn giữ, không cộng điểm
+      end
+      API --> UI : 402 — lý do, Payment FAILED, Order PAYMENT_FAILED
+    end
+  end
+else Đơn cũ đã PAID / đang phục vụ / đã kết thúc
+  UI -> UI : Không tạo yêu cầu thanh toán mới; đọc lại đơn bên dưới
+end
+note over UI, API
+  Mất phản hồi tạo đơn/thanh toán: gửi lại cùng key và nội dung, không tự đổi key.
+  422: kiểm tra đơn cũ trước thao tác mới. 409 PROCESSING: đọc lại trạng thái.
+  PROCESSING quá 2 phút được đánh dấu FAILED khi có lần thanh toán tiếp theo.
+  Lỗi mạng không chứng minh bị từ chối; cần đọc lại đơn trước khi kết luận.
+end note
+UI -> API : GET /orders/:id + Bearer
+API -> DB : Đọc đơn theo id và userId
+DB --> API : Trạng thái đã lưu
+API --> UI : 200 — chi tiết đơn (404 nếu không phải đơn của khách)
+alt Đã xác định PAID / PREPARING / READY / COMPLETED
+  UI -> UI : Dọn giỏ
+  UI --> Customer : Xác nhận đã thanh toán; hiển thị trạng thái thực tế của đơn
+else PAYMENT_FAILED / PENDING / CANCELLED / chưa rõ kết quả
+  UI --> Customer : Báo trạng thái thực tế; giữ giỏ, orderId; cho kiểm tra lại
+  note over Customer, UI
+    Chỉ thử lại nếu PENDING/PAYMENT_FAILED. Nếu bị từ chối:
+    đổi thông tin thanh toán, dùng key mới cho nội dung mới,
+    thử lại POST /payments trên cùng đơn; hoặc hủy hợp lệ (không hoàn tiền).
+  end note
+end
+opt Khách xem lịch sử
+  UI -> API : GET /orders/me + Bearer
+  API -> DB : Đọc các đơn của khách
+  DB --> API : Danh sách phân trang
+  API --> UI : 200 {items, page, limit, total}
+  UI --> Customer : Hiển thị lịch sử và trạng thái
+end
+@enduml

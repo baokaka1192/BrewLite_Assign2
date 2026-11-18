@@ -1,0 +1,141 @@
+@startuml
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam defaultFontName SansSerif
+skinparam classAttributeIconSize 0
+hide methods
+title BrewLite — Mô hình domain và ánh xạ schema hiện tại
+class User {
+  id: String <<PK>>
+  email: String <<unique>>
+  passwordHash: String?
+  googleId: String? <<unique>>
+  name: String?
+  loyaltyPoints: Int = 0
+}
+class Product {
+  id: String <<PK>>
+  name: String
+  description: String
+  category: String
+  price: Int
+  imageUrl: String
+  stock: Int = 0
+  available: Boolean = true
+  version: Int = 0
+  sizes: Json
+  toppings: Json
+}
+class Order {
+  id: String <<PK>>
+  userId: String? <<FK>>
+  status: OrderStatus = PENDING
+  total: Int
+  note: String?
+  discount: Int = 0
+  voucherCode: String?
+  pointsEarned: Int = 0
+  version: Int = 0
+  idempotencyKey: String?
+  requestHash: String?
+  createdAt: DateTime
+}
+class OrderItem {
+  id: String <<PK>>
+  orderId: String <<FK>>
+  productId: String <<FK>>
+  size: String
+  toppings: Json
+  qty: Int
+  lineTotal: Int
+}
+class Payment {
+  id: String <<PK>>
+  orderId: String <<FK>>
+  idempotencyKey: String <<unique>>
+  amount: Int
+  method: String
+  status: String
+  requestHash: String?
+  failureReason: String?
+  createdAt: DateTime
+}
+class "Promotion\n(ánh xạ model Voucher)" as Promotion <<ánh xạ>> {
+  id: String <<PK>>
+  code: String <<unique>>
+  type: VoucherType
+  value: Int
+  minSubtotal: Int = 0
+  maxDiscount: Int?
+  expiresAt: DateTime?
+  active: Boolean = true
+  usageLimit: Int?
+  usedCount: Int = 0
+}
+class LoyaltyTransaction <<khái niệm, chưa lưu riêng>>
+enum OrderStatus {
+  PENDING
+  PAID
+  PAYMENT_FAILED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+enum VoucherType {
+  PERCENT
+  FIXED
+}
+User "0..1" -- "0..*" Order : sở hữu
+Order "1" *-- "0..*" OrderItem : gồm
+Product "1" -- "0..*" OrderItem : được đặt
+Order "1" -- "0..*" Payment : các lần thanh toán
+Order ..> OrderStatus : trạng thái
+Promotion ..> VoucherType : loại voucher
+Order ..> Promotion : voucherCode đối chiếu code\n(liên hệ nghiệp vụ, không FK)
+LoyaltyTransaction ..> User : điểm lưu ở loyaltyPoints
+LoyaltyTransaction ..> Order : điểm đã cộng lưu ở pointsEarned
+note left of User
+  Schema cho phép Order.userId null (0..1 User).
+  UC-01 bắt buộc JWT và gắn đơn với khách đăng nhập.
+  Int tiền tính bằng đồng; dấu ? là nullable.
+end note
+note bottom of OrderItem
+  Schema cho phép 0..* dòng; nghiệp vụ tạo đơn cần ít nhất 1 dòng.
+  Xóa Order xóa kèm OrderItem (onDelete: Cascade).
+  size, toppings, lineTotal lưu lựa chọn và giá lúc đặt.
+end note
+note right of Order
+  Unique kết hợp: (userId, idempotencyKey).
+  Gửi lại cùng key/nội dung trả đơn cũ, không giữ kho thêm.
+  Luồng thường: PENDING -> PAID -> PREPARING -> READY -> COMPLETED.
+  Bị từ chối: PAYMENT_FAILED; thử lại thành công về PAID.
+  Thử lại có bước nội bộ PAYMENT_FAILED -> PENDING.
+  PENDING, PAYMENT_FAILED, PAID, PREPARING được hủy sang CANCELLED.
+end note
+note right of Payment
+  status là String trong schema: PROCESSING / SUCCESS / FAILED.
+  method là String; API chỉ nhận WALLET / CARD.
+  Một Order có nhiều lần thanh toán; mỗi key là duy nhất toàn bảng.
+  Migration có unique index có điều kiện cho một PROCESSING/đơn;
+  đây không phải enum hoặc ràng buộc thể hiện trực tiếp trong schema.
+end note
+note bottom of Promotion
+  Đề gọi Promotion; schema chỉ có Voucher, không có bảng Promotion.
+  Tất cả thuộc tính ở đây lấy nguyên từ Voucher.
+  Order.voucherCode là chuỗi, không khai báo quan hệ Prisma với Voucher.
+  Không gán multiplicity hoặc khóa ngoại lưu trữ cho liên hệ nét đứt này.
+end note
+note bottom of LoyaltyTransaction
+  Đủ tên lớp theo đề nhưng chưa có model/bảng LoyaltyTransaction.
+  Không khai báo thuộc tính, khóa ngoại hoặc multiplicity giả định.
+  Thực tế chỉ có User.loyaltyPoints và Order.pointsEarned.
+  Thành công cộng floor(total / 10000) một lần; hủy thu hồi, không âm.
+  Chưa có sổ giao dịch điểm riêng trong schema hiện tại.
+end note
+legend bottom
+  Nguồn: apps/api/prisma/schema.prisma (chỉ đọc).
+  Nét liền và multiplicity mô tả quan hệ schema; nét đứt mô tả phụ thuộc/ánh xạ.
+  Đây là mô hình domain, không đề xuất thêm bảng hoặc thay đổi schema.
+endlegend
+@enduml

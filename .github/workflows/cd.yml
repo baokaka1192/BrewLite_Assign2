@@ -1,0 +1,146 @@
+name: CD
+
+# Push to main: quality gate -> build images tagged with the commit SHA -> push to GHCR
+# -> deploy to Render -> smoke test -> automatic rollback to the previous SHA on failure.
+# Manual run with image_tag: redeploy an image that was already built (also the manual rollback).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Commit SHA của image đã build để deploy lại hoặc rollback. Để trống để build từ commit đang chọn.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    if: ${{ inputs.image_tag == '' }}
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: quality
+    if: ${{ inputs.image_tag == '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check build configuration
+        env:
+          PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+        run: |
+          if [ -z "$PRODUCTION_API_URL" ]; then
+            echo "::error::Thiếu biến PRODUCTION_API_URL (Settings > Secrets and variables > Actions > Variables)."
+            exit 1
+          fi
+
+      - name: Image names
+        id: names
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "api=ghcr.io/${owner}/brewlite-api" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/${owner}/brewlite-web" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          push: true
+          build-args: APP_VERSION=${{ github.sha }}
+          tags: ${{ steps.names.outputs.api }}:${{ github.sha }}
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/web
+          push: true
+          # Baked in at build time: the browser calls this URL directly.
+          build-args: NEXT_PUBLIC_API_URL=${{ vars.PRODUCTION_API_URL }}
+          tags: ${{ steps.names.outputs.web }}:${{ github.sha }}
+
+  deploy:
+    needs: build
+    # Runs after a successful build, or alone when a manual run names an existing image_tag.
+    if: ${{ always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.image_tag != '')) }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      RENDER_DEPLOY_HOOK_API: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
+      RENDER_DEPLOY_HOOK_WEB: ${{ secrets.RENDER_DEPLOY_HOOK_WEB }}
+      PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+      PRODUCTION_WEB_URL: ${{ vars.PRODUCTION_WEB_URL }}
+      TAG: ${{ inputs.image_tag || github.sha }}
+      PREVIOUS_TAG: ${{ github.event_name == 'push' && github.event.before || '' }}
+    steps:
+      - name: Check deploy configuration
+        run: |
+          missing=""
+          for name in RENDER_DEPLOY_HOOK_API RENDER_DEPLOY_HOOK_WEB PRODUCTION_API_URL PRODUCTION_WEB_URL; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Thiếu cấu hình production:$missing. Xem docs/deployment.md."
+            exit 1
+          fi
+
+      - name: Deploy script
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          cat > deploy.sh <<EOF
+          set -euo pipefail
+          tag="\$1"
+          for app in api web; do
+            hook_var="RENDER_DEPLOY_HOOK_\$(echo "\$app" | tr '[:lower:]' '[:upper:]')"
+            image="ghcr.io/${owner}/brewlite-\$app:\$tag"
+            encoded="\$(jq -rn --arg v "\$image" '\$v|@uri')"
+            echo "Deploy \$app -> \$image"
+            # The hook URL is a secret, so only the HTTP status is printed.
+            curl -fsS -o /dev/null -w "Render trả %{http_code}\n" -X POST "\${!hook_var}&imgURL=\$encoded"
+          done
+          EOF
+
+      - name: Deploy
+        run: bash deploy.sh "$TAG"
+
+      - name: Smoke test
+        id: smoke
+        run: |
+          # Wait until /health reports the new commit, so the old deploy cannot pass the check.
+          for i in $(seq 1 40); do
+            version="$(curl -fsS "$PRODUCTION_API_URL/health" | jq -r '.version' || true)"
+            if [ "$version" = "$TAG" ]; then
+              echo "API đang chạy phiên bản $version"
+              curl -fsS -o /dev/null "$PRODUCTION_API_URL/products"
+              curl -fsS -o /dev/null "$PRODUCTION_WEB_URL/menu"
+              echo "Smoke test đạt"
+              exit 0
+            fi
+            echo "Lần $i: API báo phiên bản '${version}', chờ $TAG"
+            sleep 15
+          done
+          echo "::error::Phiên bản $TAG không lên sau 10 phút"
+          exit 1
+
+      - name: Roll back to the previous commit
+        if: ${{ failure() && steps.smoke.outcome == 'failure' && env.PREVIOUS_TAG != '' && env.PREVIOUS_TAG != '0000000000000000000000000000000000000000' }}
+        run: |
+          echo "::warning::Smoke test lỗi, deploy lại image $PREVIOUS_TAG"
+          bash deploy.sh "$PREVIOUS_TAG"
