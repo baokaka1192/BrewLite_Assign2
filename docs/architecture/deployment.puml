@@ -1,0 +1,72 @@
+@startuml deployment
+title BrewLite - Sơ đồ triển khai (production trên Render: thiết kế, chưa triển khai)
+
+skinparam shadowing false
+skinparam defaultFontName Arial
+left to right direction
+
+node "Thiết bị người dùng" as device {
+  artifact "Trình duyệt\n(PWA: chưa thực hiện)" as browser
+}
+
+frame "Local (máy dev)" as local {
+  node "Docker Compose" as compose {
+    component "frontend :3000" as l_web
+    component "backend :4000" as l_api
+    database "db: postgres:16-alpine\nvolume db-data" as l_db
+  }
+  l_web ..> l_api : HTTP
+  l_api --> l_db : TCP 5432
+}
+
+frame "CI/CD (GitHub, chưa có workflow)" as ci {
+  node "GitHub repository" as repo
+  node "GitHub Actions runner" as runner {
+    artifact "Install, Lint, Test, Build" as quality
+    artifact "Build image\ntag = commit SHA" as imgbuild
+  }
+  node "GitHub Container Registry\n(ghcr.io)" as registry {
+    artifact "brewlite-web:<sha>" as img_web
+    artifact "brewlite-api:<sha>" as img_api
+  }
+  repo --> runner : push / pull request
+  quality --> imgbuild : đạt quality gate
+  imgbuild --> registry : docker push
+}
+
+cloud "Render (production)" as render {
+  node "Web Service: web\n<<container>>" as p_web {
+    artifact "apps/web/Dockerfile\nnode server.js :3000" as web_app
+  }
+  node "Web Service: api\n<<container>>" as p_api {
+    artifact "apps/api/Dockerfile\nnode dist/main :4000\nhealth: /api/health" as api_app
+    component "MockPaymentGateway\n(trong tiến trình)" as gateway
+  }
+  database "Render Postgres: brewlite-db\npersistent storage\nkhông mở kết nối từ ngoài" as p_db
+  collections "Biến môi trường và secret\nJWT_SECRET, DATABASE_URL,\nSTAFF_API_KEY, CORS_ORIGIN" as secrets
+  collections "Log (stdout)" as logs
+}
+
+browser --> web_app : HTTPS 443\ntải trang
+browser --> api_app : HTTPS 443\nREST JSON + Bearer JWT
+api_app --> p_db : mạng nội bộ Render\nPrisma / TCP 5432
+api_app ..> gateway
+secrets ..> api_app : nạp lúc chạy
+p_api ..> logs
+p_web ..> logs
+
+runner ..> render : deploy hook\n(URL trong GitHub secrets)
+img_web ..> p_web : kéo image
+img_api ..> p_api : kéo image
+
+note bottom of p_db
+  Migration: prisma migrate deploy
+  chạy thành bước riêng trước khi bật bản mới
+  (ADR-003, chưa thực hiện)
+end note
+
+note bottom of render
+  Rollback: deploy lại image tag SHA trước đó.
+  Chưa có URL production.
+end note
+@enduml

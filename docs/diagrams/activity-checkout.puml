@@ -1,0 +1,126 @@
+@startuml
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam defaultFontName SansSerif
+title BrewLite — Từ menu đến xác nhận đơn (UC-01)
+|Khách hàng|
+start
+:Xem menu và mở chi tiết món;
+|Web|
+:Gọi GET /products, GET /products/:id;
+|API|
+:Trả thông tin, tùy chọn và tồn kho;
+|Khách hàng|
+if (Món còn hàng?) then (Có)
+  :Chọn size, topping và số lượng;
+else (Không)
+  |Web|
+  :Thông báo hết hàng;
+  |Khách hàng|
+  :Quay lại menu để chọn món khác;
+  stop
+endif
+|Web|
+:Thêm món vào giỏ, lưu tại trình duyệt;
+|Khách hàng|
+:Kiểm tra giỏ và chọn thanh toán;
+|Web|
+if (Giỏ có ít nhất một dòng hợp lệ?) then (Có)
+else (Không)
+  :Yêu cầu sửa giỏ; không gửi đặt đơn;
+  stop
+endif
+|Web|
+if (Có phiên hợp lệ?) then (Có)
+else (Chưa đăng nhập / hết phiên)
+  :Mở đăng nhập, giữ đường dẫn quay lại nội bộ;
+  |Khách hàng|
+  :Nhập email và mật khẩu;
+  |Web|
+  :Gửi POST /auth/login;
+  |API|
+  :Kiểm tra thông tin đăng nhập;
+  if (Đăng nhập thành công?) then (Có)
+    :Trả accessToken;
+    |Web|
+    :Lưu phiên và quay lại thanh toán;
+  else (Không)
+    |Web|
+    :Báo lỗi đăng nhập, giữ giỏ để thử lại;
+    stop
+  endif
+endif
+|Web|
+:Gửi POST /orders/quote với Bearer;
+|API|
+:Kiểm tra JWT, dữ liệu, sản phẩm, voucher nếu có;\nTính báo giá từ database, chưa giữ kho;
+if (Báo giá hợp lệ?) then (Có)
+  |Web|
+  :Hiển thị tiền hàng, giảm giá, tổng tiền;
+else (Không)
+  |Web|
+  :Báo hết hàng / dữ liệu sai / voucher lỗi;\nYêu cầu sửa giỏ hoặc mã và báo giá lại;
+  stop
+endif
+|Khách hàng|
+:Xác nhận và chọn Ví hoặc Thẻ giả lập;
+|Web|
+:Tạo key đặt đơn; gửi POST /orders;\nBearer + Idempotency-Key;
+|API|
+:Kiểm tra JWT, dữ liệu và key;
+if (Cùng người dùng/key đã có?) then (Có)
+  if (Cùng nội dung?) then (Có)
+    :Trả 200 và đơn cũ; không giữ thêm kho;
+  else (Không)
+    :Trả 422;
+    |Web|
+    :Kiểm tra đơn cũ trước thao tác mới;
+    stop
+  endif
+else (Key mới)
+  |API|
+  :Kiểm tra lại giá và tồn kho;\nTạo đơn, giữ kho trong cùng transaction;
+  if (Giữ kho và tạo đơn thành công?) then (Có)
+    :Commit; trả 201, orderId, PENDING;
+  else (Hết hàng / xung đột kho)
+    :Rollback toàn bộ; trả 409;
+    |Web|
+    :Báo hết hàng, yêu cầu cập nhật giỏ\nvà xác nhận lại; chưa gửi thanh toán;
+    stop
+  endif
+endif
+|Web|
+if (Đơn PENDING hoặc PAYMENT_FAILED?) then (Có)
+else (Không)
+  :Đọc GET /orders/:id với Bearer;\nHiển thị kết quả đã lưu; không gửi thanh toán mới;
+  stop
+endif
+:Giữ orderId; tạo key thanh toán;\nGửi POST /payments với Bearer + Idempotency-Key;
+|API|
+:Kiểm tra JWT, chủ đơn, trạng thái, dữ liệu;\nGọi cổng thanh toán giả lập với tổng từ database;
+if (Thanh toán thành công?) then (Có)
+  :Ghi SUCCESS, chuyển PAID;\nCộng điểm một lần trong transaction; trả 201;
+  |Web|
+  :Đọc GET /orders/:id với Bearer;
+  |API|
+  :Trả trạng thái đơn đã lưu;
+  |Web|
+  :Dọn giỏ khi xác định thành công;\nHiển thị xác nhận thanh toán;
+  |Khách hàng|
+  :Nhận xác nhận đơn PAID;
+else (Bị từ chối)
+  |API|
+  :Ghi FAILED, chuyển PAYMENT_FAILED;\nTrả 402, giữ kho, không cộng điểm;
+  |Web|
+  :Báo thanh toán thất bại; giữ giỏ và orderId;\nCho đổi thông tin và thử lại cùng đơn\nvới key thanh toán mới, hoặc hủy hợp lệ;
+  |Khách hàng|
+  :Nhận kết quả thất bại của lần thanh toán;
+endif
+stop
+legend bottom
+  Các nhánh sửa giỏ/đăng nhập kết thúc lần thao tác hiện tại; khách có thể bắt đầu lại.
+  Mất phản hồi: giữ dữ liệu, gửi lại cùng key và nội dung; đọc lại đơn trước thao tác mới.
+  Lỗi JWT ở API: trả 401 và quay lại đăng nhập. Báo giá không bảo đảm còn kho lúc tạo đơn.
+  Cổng giả lập không chuyển tiền thật; hủy đơn không hoàn tiền.
+endlegend
+@enduml
