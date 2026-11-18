@@ -18,6 +18,9 @@ export const hero = {
   headline: ['Good Coffee.', 'Good People.', 'Great Days.'],
   sub: 'Single-origin espresso, seasonal filter, and everything baked from scratch',
   chips: ['Specialty Roaster', 'Organic Milk', 'Cashless Ordering'],
+  openChip: { label: 'Open today', value: '7am–9pm' },
+  src: '/images/landing/hero.jpg',
+  alt: 'Sunlit café interior with wooden tables and warm lighting',
   imageBrief:
     'Warm independent coffee shop interior, wooden tables, Edison bulbs, exposed brick, morning light',
 };
@@ -44,6 +47,8 @@ export const ourCoffee = {
     'Three origins rotate with the seasons, so the menu always tastes of what is at its best right now. Everything is roasted in small batches in Ho Chi Minh City.',
   ],
   chips: ['Direct Trade', 'Single Origin', 'Seasonal Rotating'],
+  srcs: ['/images/landing/beans-sack.jpg', '/images/landing/beans-table.jpg'],
+  alts: ['Roasted coffee beans in a burlap sack with a scoop', 'Roasted coffee beans on a wooden table'],
   briefs: ['Coffee beans poured from a burlap sack, warm studio light', 'Roasted beans close-up, rustic table'],
 };
 
@@ -54,15 +59,17 @@ export const about = {
     'One espresso machine, a handful of tables, and a rule that nobody queues longer than they need to. Today that means ordering and paying from your phone, then picking up at the bar.',
   ],
   chips: ['Est. 2019', 'Specialty SCA', 'Community Hub'],
+  src: '/images/landing/about.jpg',
+  alt: 'Smiling baristas behind the café counter',
   brief: 'Coffee shop owner behind the bar, smiling, casual apron, natural light',
 };
 
 export const gallery = [
-  'Latte art poured into a ceramic cup',
-  'Two friends chatting over coffee, afternoon light',
-  'Independent shopfront, plants, chalkboard sign',
-  'Barista grinding beans, morning routine',
-  'Seasonal iced filter coffee in a glass',
+  { src: '/images/landing/latte-art.jpg', alt: 'Latte art poured into a white ceramic cup', brief: 'Latte art poured into a ceramic cup' },
+  { src: '/images/landing/friends.jpg', alt: 'Two friends chatting at a café table', brief: 'Two friends chatting over coffee, afternoon light' },
+  { src: '/images/landing/shopfront.jpg', alt: 'Independent café shopfront with signage and plants', brief: 'Independent shopfront, plants, chalkboard sign' },
+  { src: '/images/landing/grinder.jpg', alt: 'Coffee grinder with freshly ground coffee', brief: 'Barista grinding beans, morning routine' },
+  { src: '/images/landing/iced-coffee.jpg', alt: 'Iced coffee in a glass', brief: 'Seasonal iced filter coffee in a glass' },
 ];
 
 export const events = {
