@@ -1,289 +1,246 @@
 # BrewLite
 
-Cashless coffee ordering app: browse the menu, customise a drink (size, toppings), pay from a
-wallet or card (mock gateway), follow the order status and earn loyalty points. Software Engineering
-assignment (Saigon University, 2026–2027).
+Ứng dụng đặt cà phê không dùng tiền mặt. Người dùng xem menu, chọn đồ uống (size, topping), thanh toán bằng ví hoặc thẻ (cổng thanh toán giả lập), theo dõi trạng thái đơn và tích điểm. Đây là bài tập môn Công nghệ phần mềm, Đại học Sài Gòn, năm học 2026–2027.
 
-**Stack**
+## Công nghệ
 
-- Frontend: Next.js 14 (App Router), React 18, Tailwind CSS, Zustand (cart and auth stores), Vitest
-- Backend: NestJS 10 (Express), Passport JWT, class-validator, Jest + supertest
-- Database: PostgreSQL 16 through Prisma 6 (migrations in `apps/backend/prisma/migrations`)
-- Delivery: Docker Compose (db + backend + frontend)
+| Phần | Công nghệ |
+| ---- | --------- |
+| Giao diện (frontend) | Next.js 14, React 18, Tailwind CSS, Zustand, Vitest |
+| Máy chủ (backend) | NestJS 10, Passport JWT, class-validator, Jest |
+| Cơ sở dữ liệu | PostgreSQL 16 qua Prisma 6 |
+| Triển khai | Docker Compose (db + backend + frontend) |
 
-## Folder structure
+## Cấu trúc thư mục
 
 ```
 brewlite/
 ├── apps/
-│   ├── backend/                    NestJS REST API, global prefix /api (http://localhost:4000/api)
-│   │   ├── src/
-│   │   │   ├── main.ts             bootstrap: prefix /api, CORS, global ValidationPipe
-│   │   │   ├── app.module.ts       root module (config, Prisma, feature modules)
-│   │   │   ├── config/             typed configuration + production JWT secret check
-│   │   │   ├── prisma/             global PrismaModule + PrismaService
-│   │   │   ├── common/             idempotency helper, decorators (current user), guards (staff key)
-│   │   │   └── modules/            one folder per feature (controller, service, dto, entity)
-│   │   │       ├── auth/           register / login / me, JWT strategy and guard
-│   │   │       ├── users/          user lookups used by auth
-│   │   │       ├── products/       GET /products, GET /products/:id
-│   │   │       ├── orders/         create, quote, list, detail, cancel, staff status; order-state.ts
-│   │   │       ├── payments/       mock gateway, payment idempotency, PROCESSING lock
-│   │   │       └── vouchers/       voucher and loyalty pricing (pure functions, unit tested)
-│   │   ├── prisma/                 schema.prisma, migrations/, seed.ts
-│   │   └── test/                   e2e specs (auth, products, orders, payments, stock, vouchers)
-│   └── frontend/                   Next.js App Router (http://localhost:3000)
-│       ├── public/images/menu/     product photos (credits in CREDITS.md)
+│   ├── api/          API NestJS, địa chỉ http://localhost:4000/api
+│   │   ├── src/modules/   mỗi tính năng một thư mục: auth, users, products, orders, payments, vouchers
+│   │   ├── prisma/        schema, migrations, seed (dữ liệu mẫu)
+│   │   └── test/          test e2e
+│   └── web/          Next.js, địa chỉ http://localhost:3000
 │       └── src/
-│           ├── app/                routes: / (landing), /menu, /menu/[id], /cart, /checkout,
-│           │                       /login, /register, /orders, /orders/[id]
-│           ├── components/         ui/ (Button), layout/ (Navbar, Footer), landing/, shared/,
-│           │                       auth/, menu/, cart/
-│           ├── features/           checkout/ (payload, voucher, payment errors) and orders/ (API, views)
-│           ├── content/            landing-page copy (edit text here, not in components)
-│           ├── lib/                API client (api.ts), price formatting, auth helpers, safe redirect
-│           └── store/              Zustand stores: cart.ts, auth.ts
-├── docker/postgres/init/           creates the brewlite_test database on a fresh volume
-├── docs/scrum/                     sprint plan, burndown template, Definition of Done
-├── docker-compose.yml              db + backend + frontend
-├── .env.example                    root variables read by docker-compose
-└── package.json                    helper scripts (install:all, dev:*, build, test, docker:*)
+│           ├── app/          các trang (route)
+│           ├── components/   các khối giao diện
+│           ├── features/     checkout và orders
+│           ├── content/      nội dung chữ của trang chủ
+│           ├── lib/          gọi API, định dạng giá, hàm hỗ trợ đăng nhập
+│           └── store/        giỏ hàng và đăng nhập (Zustand)
+├── docker/           script tạo database test
+├── docs/
+│   ├── requirements/ bối cảnh, phạm vi, SRS, use-case
+│   ├── diagrams/     activity, sequence, class
+│   ├── architecture/ kiến trúc, ADR, sơ đồ triển khai
+│   ├── process/      quy trình Git, quy ước commit, Definition of Done, Product Backlog
+│   ├── scrum/        kế hoạch sprint, burndown, Definition of Done, đề bài PDF
+│   ├── deployment.md, release-notes.md, traceability-matrix.md
+├── tests/            test tích hợp và end-to-end qua HTTP (npm run test:system)
+├── .github/workflows/ CI và CD (chưa chạy trên GitHub)
+├── docker-compose.yml
+└── .env.example
 ```
 
-The `features/auth`, `features/menu` and `features/cart` folders are empty placeholders; their code lives in
-`components/auth`, `components/menu`, `components/cart` and `store/`. The backend `common/filters`,
-`common/interceptors` and `common/pipes` folders are empty.
+## Cách chạy trên máy (dev)
 
-Rule of thumb: **routes in `app/`, UI pieces in `components/`, business code for one domain in `features/` (frontend) or `modules/` (backend).**
-
-## Run locally (dev servers on the host)
-
-Only the database runs in Docker; the API and the web app run on the host.
+Chỉ database chạy trong Docker. API và web chạy trực tiếp trên máy.
 
 ```bash
 cp .env.example .env
-cp apps/backend/.env.example apps/backend/.env   # Prisma CLI and the backend read this file
-docker compose up -d db                           # Postgres 16 on localhost:5432
-npm run install:all                               # installs backend and frontend dependencies
-cd apps/backend && npx prisma migrate deploy && npm run prisma:seed && cd ../..
+cp apps/api/.env.example apps/api/.env
+docker compose up -d db
+npm run install:all
+cd apps/api && npx prisma migrate deploy && npm run prisma:seed && cd ../..
 npm run dev:backend      # http://localhost:4000/api
-npm run dev:frontend     # http://localhost:3000   (second terminal)
+npm run dev:frontend     # http://localhost:3000 (mở terminal thứ hai)
 ```
 
-- `brewlite_test` is created by `docker/postgres/init/01-create-test-db.sql`, which only runs when the
-  `db-data` volume is first created. For an existing volume, create it once:
+Lưu ý:
+- Database `brewlite_test` chỉ được tạo tự động khi volume mới. Nếu volume đã có sẵn, tạo thủ công:
   `docker compose exec db psql -U brewlite -d brewlite -c "CREATE DATABASE brewlite_test OWNER brewlite;"`
-- Use `npx prisma migrate dev` instead of `migrate deploy` when you change `schema.prisma` (dev only).
-- Reset the dev database (drops all data): `cd apps/backend && npx prisma migrate reset`.
-- The frontend calls the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api`). Override it in
-  `apps/frontend/.env.local` (see `apps/frontend/.env.example`) if the backend runs elsewhere.
+- Khi sửa `schema.prisma`, dùng `npx prisma migrate dev` thay cho `migrate deploy`.
+- Xóa sạch dữ liệu dev: `cd apps/api && npx prisma migrate reset`.
+- Nếu backend chạy ở địa chỉ khác, đặt `NEXT_PUBLIC_API_URL` trong `apps/web/.env.local`.
 
-## Run with Docker (all three services)
+## Cách chạy bằng Docker (cả 3 dịch vụ)
 
 ```bash
 cp .env.example .env
-docker compose up --build          # add -d to run in the background
+docker compose up --build
 ```
 
-| Service | URL on the host | Notes |
-| ------- | --------------- | ----- |
-| frontend | http://localhost:3000 | Next.js standalone build |
-| backend | http://localhost:4000/api | `prisma migrate deploy` and the seed run on every start |
-| db | localhost:5432 | Postgres 16, the backend waits for its healthcheck |
+| Dịch vụ | Địa chỉ | Ghi chú |
+| ------- | ------- | ------- |
+| frontend | http://localhost:3000 | Bản build Next.js |
+| backend | http://localhost:4000/api | Mỗi lần khởi động đều chạy migrate và seed |
+| db | localhost:5432 | Backend chờ db sẵn sàng mới chạy |
 
-- The seed upserts the 10 products and the 2 vouchers by id/code, so restarting the backend never duplicates
-  them. It does reset the seeded product stock and prices to the seed values, and it keeps voucher usage counts.
-- `NEXT_PUBLIC_API_URL` is baked into the frontend at build time. It must be a URL the browser can reach
-  (`http://localhost:4000/api`), not a Docker-internal host name. After changing it, rebuild with `docker compose up --build`.
-- The backend image runs with `NODE_ENV=production`, which refuses a missing, short (under 32 characters) or
-  placeholder `JWT_SECRET`. Set your own value in `.env` for anything beyond local play.
-- Stop with `docker compose down`. This keeps the `db-data` volume; `docker compose down -v` deletes the data.
+- Seed chạy lại nhiều lần không bị trùng dữ liệu, nhưng sẽ đặt lại tồn kho và giá về giá trị mẫu.
+- `NEXT_PUBLIC_API_URL` được gắn vào frontend lúc build, nên phải là địa chỉ trình duyệt truy cập được (`http://localhost:4000/api`). Đổi giá trị này thì build lại bằng `docker compose up --build`.
+- Ở chế độ production, backend từ chối `JWT_SECRET` thiếu, ngắn hơn 32 ký tự hoặc còn là giá trị mẫu. Hãy đặt giá trị riêng trong `.env`.
+- Dừng: `docker compose down` (giữ dữ liệu). `docker compose down -v` sẽ xóa luôn dữ liệu.
 
-## Environment variables
+## Biến môi trường
 
-Names and purpose only. Put real values in the `.env` files; never commit them.
+Không commit giá trị thật. Chỉ ghi vào file `.env`.
 
-Root `.env` (read by `docker-compose.yml` for variable substitution):
+File `.env` ở thư mục gốc (docker-compose đọc):
 
-| Variable | Used by | Notes |
-| -------- | ------- | ----- |
-| `POSTGRES_USER` | db, backend | Part of the backend `DATABASE_URL` that compose builds. |
-| `POSTGRES_PASSWORD` | db, backend | Development value only. |
-| `POSTGRES_DB` | db, backend | Name of the application database. |
-| `JWT_SECRET` | backend | Signs access tokens. At least 32 characters; placeholders are rejected in production mode. |
-| `JWT_EXPIRES_IN` | backend | Token lifetime, e.g. `1h`, `7d`. Default `1d`. |
-| `CORS_ORIGIN` | backend | Browser origin allowed to call the API. Default `http://localhost:3000`. |
-| `NEXT_PUBLIC_API_URL` | frontend (build arg) | API base URL seen by the browser. Default `http://localhost:4000/api`. |
+| Biến | Dùng cho | Ý nghĩa |
+| ---- | -------- | ------- |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | db, backend | Tài khoản và tên database |
+| `JWT_SECRET` | backend | Khóa ký token, tối thiểu 32 ký tự |
+| `JWT_EXPIRES_IN` | backend | Thời hạn token, ví dụ `1h`, `7d` (mặc định `1d`) |
+| `CORS_ORIGIN` | backend | Địa chỉ web được gọi API (mặc định `http://localhost:3000`) |
+| `GOOGLE_CLIENT_ID` | backend | Không bắt buộc. Để trống thì tắt đăng nhập Google (trả 404) |
+| `NEXT_PUBLIC_API_URL` | frontend | Địa chỉ API mà trình duyệt gọi |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | frontend | Không bắt buộc. Để trống thì ẩn nút Google. Phải trùng `GOOGLE_CLIENT_ID` của backend |
 
-Backend `apps/backend/.env` (local mode; read by the Node process and the Prisma CLI):
+File `apps/api/.env` (khi chạy trên máy):
 
-| Variable | Default | Notes |
-| -------- | ------- | ----- |
-| `PORT` | `4000` | HTTP port of the API. |
-| `DATABASE_URL` | none (required) | Points at `localhost:5432` in local mode and at `db:5432` in compose. |
-| `DATABASE_URL_TEST` | none | Database used only by the e2e tests (`brewlite_test`). |
-| `JWT_SECRET` | `dev-secret` outside production | Required when `NODE_ENV=production`. |
-| `JWT_EXPIRES_IN` | `1d` | Token lifetime, passed to `jsonwebtoken`. |
-| `CORS_ORIGIN` | `http://localhost:3000` | Allowed browser origin. |
-| `STAFF_API_KEY` | unset | Enables `PATCH /api/orders/:id/status`. Unset means that endpoint answers 404. Use a long random value. `docker-compose.yml` passes it from the host environment (`STAFF_API_KEY: ${STAFF_API_KEY:-}`), so it stays disabled in Docker unless you export a value before `docker compose up`. |
+| Biến | Mặc định | Ý nghĩa |
+| ---- | -------- | ------- |
+| `PORT` | `4000` | Cổng của API |
+| `DATABASE_URL` | bắt buộc | Địa chỉ database |
+| `DATABASE_URL_TEST` | không có | Database riêng cho test e2e (`brewlite_test`) |
+| `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN`, `GOOGLE_CLIENT_ID` | như trên | Giống bảng trên |
+| `STAFF_API_KEY` | không có | Bật API đổi trạng thái đơn của nhân viên. Không đặt thì API này trả 404. Dùng chuỗi ngẫu nhiên dài |
 
-`apps/frontend/.env.local`: `NEXT_PUBLIC_API_URL` (see `apps/frontend/.env.example`).
+## Đăng nhập bằng Google (tùy chọn)
 
-The root `.env.example` also lists `DATABASE_URL` and `DATABASE_URL_TEST`. Compose does not read them: the backend URL is built from the
-`POSTGRES_*` values and the ports are fixed in `docker-compose.yml`. They are informational for local runs.
+1. Tạo OAuth Client ID loại **Web application** trên Google Cloud Console.
+2. Thêm `http://localhost:3000` vào **Authorized JavaScript origins**.
+3. Điền cùng một Client ID vào `GOOGLE_CLIENT_ID` (backend) và `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (frontend), rồi chạy lại cả hai.
+4. Nút "Đăng nhập với Google" sẽ hiện ở trang đăng nhập và đăng ký.
 
-## API endpoints
+Nếu email Google đã có tài khoản thì hai bên được liên kết. Nếu chưa có thì tạo tài khoản mới. Tài khoản chỉ có Google thì không đăng nhập bằng mật khẩu được.
 
-Base URL `http://localhost:4000/api`. Errors are JSON responses with the HTTP status; voucher errors also carry a
-machine-readable `code`. All request bodies are validated (`ValidationPipe` with whitelist and forbidNonWhitelisted).
+## Danh sách API
 
-| Method | Path | Auth and headers | Responses |
-| ------ | ---- | ---------------- | --------- |
-| GET | `/products` | none. Optional `?category=coffee\|tea\|pastry` | 200 list; 400 for any other category |
-| GET | `/products/:id` | none | 200; 404 unknown id |
-| POST | `/auth/register` | none. Body `{email, password (8-72), name?}`; email is lowercased | 201 `{user, accessToken}`; 400; 409 email taken |
-| POST | `/auth/login` | none. Body `{email, password}` | 200 `{user, accessToken}`; 401 (same message for unknown email or wrong password) |
-| GET | `/auth/me` | `Authorization: Bearer <accessToken>` | 200 profile; 401 |
-| POST | `/orders` | Bearer + `Idempotency-Key` (8-128 chars `[A-Za-z0-9_-]`, required) | 201 order; 200 with `Idempotency-Replayed: true` on replay; 400 (invalid input or voucher); 401; 404 unknown product; 409 stock short; 422 key reused with a different body |
-| POST | `/orders/quote` | Bearer. Same body as `POST /orders`, writes nothing | 200 `{subtotal, discount, total, voucher, pointsToEarn}`; 400; 401; 404; 409 |
-| GET | `/orders/me` | Bearer. `?page` (default 1), `?limit` (default 20, max 50) | 200 `{items, page, limit, total}`; 400 bad paging; 401 |
-| GET | `/orders/:id` | Bearer | 200 order; 404 unknown or another user's order |
-| POST | `/orders/:id/cancel` | Bearer | 200 order (no refund; releases stock, voucher use and points); 404 other user's order; 409 status not cancellable or payment in progress |
-| PATCH | `/orders/:id/status` | `X-Staff-Key` header equal to `STAFF_API_KEY`. Body `{status: "PREPARING"\|"READY"\|"COMPLETED"}` | 200; 403 wrong or missing key; 404 when `STAFF_API_KEY` is unset; 409 invalid move |
-| POST | `/payments` | Bearer + `Idempotency-Key` (required). Body `{orderId, method: "WALLET"\|"CARD", cardNumber?}`; `cardNumber` is 12-19 digits for CARD | 201 `{payment, order}`; 200 replay with `Idempotency-Replayed: true`; 402 `{reason, payment, order}` when declined; 400; 401; 404 not your order; 409 order not PENDING/PAYMENT_FAILED, or key owned by another user; 422 key reused for another order or body |
+Địa chỉ gốc: `http://localhost:4000/api`. Lỗi trả về JSON kèm mã HTTP. Mọi dữ liệu gửi lên đều được kiểm tra hợp lệ.
 
-Request details:
+| Method | Đường dẫn | Yêu cầu | Kết quả |
+| ------ | --------- | ------- | ------- |
+| GET | `/products` | Không. Có thể thêm `?category=coffee\|tea\|pastry` | 200; 400 nếu category sai |
+| GET | `/products/:id` | Không | 200; 404 nếu không có |
+| POST | `/auth/register` | Body `{email, password (8-72 ký tự), name?}` | 201 `{user, accessToken}`; 400; 409 email đã dùng |
+| POST | `/auth/login` | Body `{email, password}` | 200; 401 |
+| POST | `/auth/google` | Body `{idToken}` | 200; 401 token sai hoặc email chưa xác minh; 404 nếu chưa bật Google |
+| GET | `/auth/me` | `Authorization: Bearer <token>` | 200; 401 |
+| POST | `/orders` | Bearer + header `Idempotency-Key` (8-128 ký tự `A-Z a-z 0-9 _ -`, bắt buộc) | 201 tạo đơn; 200 nếu gửi lại cùng key; 400; 401; 404; 409 hết hàng; 422 cùng key nhưng nội dung khác |
+| POST | `/orders/quote` | Bearer. Cùng body với `POST /orders`, không ghi gì vào database | 200 `{subtotal, discount, total, voucher, pointsToEarn}` |
+| GET | `/orders/me` | Bearer. `?page` (mặc định 1), `?limit` (mặc định 20, tối đa 50) | 200 `{items, page, limit, total}` |
+| GET | `/orders/:id` | Bearer | 200; 404 nếu không phải đơn của bạn |
+| POST | `/orders/:id/cancel` | Bearer | 200 (không hoàn tiền, trả lại tồn kho, voucher và điểm); 409 nếu không thể hủy |
+| PATCH | `/orders/:id/status` | Header `X-Staff-Key` = `STAFF_API_KEY`. Body `{status: "PREPARING"\|"READY"\|"COMPLETED"}` | 200; 403 sai key; 404 chưa bật; 409 chuyển trạng thái không hợp lệ |
+| POST | `/payments` | Bearer + `Idempotency-Key`. Body `{orderId, method: "WALLET"\|"CARD", cardNumber?}`, thẻ gồm 12-19 chữ số | 201; 402 bị từ chối; 409; 422 |
 
-- `POST /orders` body: `{items:[{productId, size?: "S"\|"M"\|"L", toppingIds?, qty (1-20)}], note?, voucherCode?}`.
-  Totals are computed on the server from the database. `voucherCode` is trimmed and uppercased.
-- Voucher errors (400 with `code`): `VOUCHER_NOT_FOUND`, `VOUCHER_EXPIRED`, `VOUCHER_MIN_SUBTOTAL`, `VOUCHER_EXHAUSTED`.
-  The voucher code is part of the Idempotency-Key request hash.
-- Loyalty points: `floor(total / 10000)` per PAID order, granted once; cancelling deducts them (never below 0).
-- Payment amount is always the order total from the database. A PROCESSING payment older than 2 minutes is
-  marked FAILED when the next payment for that order starts. A declined payment leaves the order in
-  PAYMENT_FAILED, and retry is allowed from there.
+Chi tiết:
+- Body của `POST /orders`: `{items:[{productId, size?: "S"|"M"|"L", toppingIds?, qty (1-20)}], note?, voucherCode?}`. Tổng tiền luôn do server tính từ database.
+- Lỗi voucher (400 kèm `code`): `VOUCHER_NOT_FOUND`, `VOUCHER_EXPIRED`, `VOUCHER_MIN_SUBTOTAL`, `VOUCHER_EXHAUSTED`.
+- Điểm thưởng: mỗi đơn đã thanh toán được `floor(tổng tiền / 10.000)` điểm, chỉ cộng một lần. Hủy đơn thì trừ lại (không xuống dưới 0).
+- Số tiền thanh toán luôn lấy từ tổng đơn trong database. Giao dịch ở trạng thái PROCESSING quá 2 phút sẽ bị đánh dấu FAILED khi có lần thanh toán tiếp theo. Thanh toán bị từ chối thì đơn chuyển sang PAYMENT_FAILED và được thử lại.
 
-## Order state machine
+## Trạng thái đơn hàng
 
-Source of truth: `apps/backend/src/modules/orders/order-state.ts` (`ALLOWED_TRANSITIONS`). Every status change
-goes through `assertTransition`; an invalid move answers 409.
+Mọi thay đổi trạng thái đều đi qua `assertTransition` trong `apps/api/src/modules/orders/order-state.ts`. Chuyển sai thì trả 409.
 
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING: POST /orders
-    PENDING --> PAID: payment succeeds
-    PENDING --> PAYMENT_FAILED: payment declined
-    PENDING --> CANCELLED: cancel
-    PAYMENT_FAILED --> PAID: retry payment succeeds
+    PENDING --> PAID: thanh toán thành công
+    PENDING --> PAYMENT_FAILED: thanh toán bị từ chối
+    PENDING --> CANCELLED: hủy
+    PAYMENT_FAILED --> PAID: thử lại thành công
     PAYMENT_FAILED --> PENDING
-    PAYMENT_FAILED --> CANCELLED: cancel
-    PAID --> PREPARING: staff
-    PAID --> CANCELLED: cancel (no refund)
-    PREPARING --> READY: staff
-    PREPARING --> CANCELLED: cancel (no refund)
-    READY --> COMPLETED: staff
+    PAYMENT_FAILED --> CANCELLED: hủy
+    PAID --> PREPARING: nhân viên
+    PAID --> CANCELLED: hủy (không hoàn tiền)
+    PREPARING --> READY: nhân viên
+    PREPARING --> CANCELLED: hủy (không hoàn tiền)
+    READY --> COMPLETED: nhân viên
     COMPLETED --> [*]
     CANCELLED --> [*]
 ```
 
-Happy path: PENDING → PAID → PREPARING → READY → COMPLETED. COMPLETED and CANCELLED are terminal.
+Luồng bình thường: PENDING → PAID → PREPARING → READY → COMPLETED. COMPLETED và CANCELLED là trạng thái cuối.
 
-## Stock and concurrent orders
+## Tồn kho và đặt hàng đồng thời
 
-`POST /api/orders` reserves stock inside the same `prisma.$transaction` that creates the order and its items. Each
-product is reserved with an optimistic lock: `UPDATE product SET stock = stock - qty, version = version + 1 WHERE id = ? AND version = <read version> AND stock >= qty`.
-Quantities are summed per product and products are locked in sorted id order. If the version changed, the request re-reads
-the product and retries up to 5 times with a jittered backoff; it answers 409 when stock is short or the retries run out.
-Any failure rolls back the whole transaction. A product whose stock reaches 0 is marked `available=false` in the same transaction.
-Cancelling an order restores its quantities, voucher use and points in the same transaction as the CANCELLED move; the state
-guard makes that happen once. PAYMENT_FAILED keeps the reservation so the retry can pay for it. An idempotent replay returns
-the stored order and never reserves stock again. `test/orders-stock.e2e-spec.ts` runs 20 concurrent orders against 5 units and
-expects exactly 5 successes.
+Khi tạo đơn, tồn kho được giữ chỗ trong cùng một transaction với việc tạo đơn. Mỗi sản phẩm dùng khóa lạc quan (cột `version`): chỉ trừ kho khi `version` chưa đổi và còn đủ hàng. Nếu `version` đã đổi, hệ thống đọc lại và thử lại tối đa 5 lần. Hết hàng hoặc hết lượt thử thì trả 409 và hoàn tác toàn bộ. Sản phẩm về 0 sẽ tự đặt `available=false`.
 
-## Seeded data
+Hủy đơn trả lại tồn kho, voucher và điểm trong cùng một transaction. Gửi lại cùng `Idempotency-Key` chỉ trả về đơn cũ, không giữ thêm hàng. Test `orders-stock.e2e-spec.ts` chạy 20 đơn cùng lúc cho 5 sản phẩm và kỳ vọng đúng 5 đơn thành công.
 
-- Products: 10 items (coffee, tea, pastry). Drinks have sizes S / M (+5,000) / L (+10,000) and three toppings
-  (Trân châu 8,000, Kem cheese 10,000, Thạch dừa 7,000). Pastries have no options. Two products (`Bạc hà đá xay`,
-  `Bánh mì pate trứng`) start sold out.
-- Vouchers:
+## Dữ liệu mẫu
 
-| Code | Type | Value | Minimum subtotal | Max discount |
-| ---- | ---- | ----- | ---------------- | ------------ |
-| `BREW10` | percent | 10% | 50,000 VND | 30,000 VND |
-| `WELCOME20K` | fixed | 20,000 VND | 60,000 VND | none |
+- 10 sản phẩm (cà phê, trà, bánh). Đồ uống có size S / M (+5.000) / L (+10.000) và 3 topping: Trân châu 8.000, Kem cheese 10.000, Thạch dừa 7.000. Bánh không có tùy chọn. Hai sản phẩm `Bạc hà đá xay` và `Bánh mì pate trứng` ban đầu hết hàng.
+- Voucher:
 
-## Tests
+| Mã | Loại | Giá trị | Đơn tối thiểu | Giảm tối đa |
+| -- | ---- | ------- | ------------- | ----------- |
+| `BREW10` | Phần trăm | 10% | 50.000đ | 30.000đ |
+| `WELCOME20K` | Cố định | 20.000đ | 60.000đ | Không giới hạn |
+
+## Chạy test
 
 ```bash
-# backend unit tests (PrismaService and gateways are mocked; no database needed)
-cd apps/backend && npm test
+# test đơn vị backend (không cần database)
+cd apps/api && npm test
 
-# backend e2e tests (needs the db container; migrates and seeds brewlite_test in beforeAll)
+# test e2e backend (cần container db)
 docker compose up -d db
-cd apps/backend && npm run test:e2e
+cd apps/api && npm run test:e2e
 
-# backend production build (prisma generate + nest build)
-cd apps/backend && npm run build
+# build backend
+cd apps/api && npm run build
 
-# frontend type check, unit tests, production build
-cd apps/frontend && npx tsc --noEmit && npm test && npm run build
+# frontend: kiểm tra kiểu, test, build
+cd apps/web && npx tsc --noEmit && npm test && npm run build
 ```
 
-From the repo root, `npm test` runs the backend unit tests. `npm test`, `npm run build` and `npm run test:e2e` in the
-backend run `prisma generate` first.
+Từ thư mục gốc, `npm test` chạy test đơn vị của backend.
 
-## Demo script (end to end)
+## Kịch bản demo
 
-Prerequisites: stack running (Docker or local dev servers), database seeded.
+Điều kiện: hệ thống đang chạy và đã seed dữ liệu.
 
-1. Open http://localhost:3000 and go to **Register**. Create an account (email, password of 8+ characters).
-   You are redirected to `/menu`.
-2. On **Menu**, filter by category if you like and open a drink such as **Cà phê sữa đá**.
-3. Pick a size (M) and one or two toppings, then **Add to cart**. The navbar badge updates.
-4. Add a second drink so the subtotal reaches 50,000 VND (needed for `BREW10`). Open **Cart**.
-5. Go to **Checkout**. Enter voucher `BREW10`; the discount and total come from `POST /orders/quote`.
-   Keep the payment method **Wallet** and pay. The order is created and paid, and you land on
-   `/orders/<id>?paid=1` (order confirmation with status PAID and the loyalty points earned).
-6. Open **Orders** to see the history. Use the order detail page to follow the status.
+1. Mở http://localhost:3000, vào **Đăng ký**, tạo tài khoản (mật khẩu từ 8 ký tự). Bạn sẽ được chuyển tới `/menu`.
+2. Ở **Menu**, lọc theo loại nếu muốn, mở một món như **Cà phê sữa đá**.
+3. Chọn size M và một hai topping, bấm **Thêm vào giỏ**. Số trên biểu tượng giỏ hàng tăng lên.
+4. Thêm món thứ hai để tạm tính đạt 50.000đ (đủ điều kiện dùng `BREW10`). Mở **Giỏ hàng**.
+5. Vào **Thanh toán**, nhập voucher `BREW10`, giữ phương thức **Ví** và thanh toán. Bạn được chuyển tới `/orders/<id>?paid=1` với trạng thái PAID và số điểm nhận được.
+6. Mở **Đơn hàng** để xem lịch sử và theo dõi trạng thái.
 
-Failure demo:
+Demo thanh toán thất bại:
 
-1. Add a drink again (subtotal at least 60,000 VND for `WELCOME20K`, or any amount without a voucher).
-2. In **Checkout**, choose **Card** and enter a number ending in `0000`, for example `4111 1111 1111 0000`.
-3. The payment is declined (402). The order is PAYMENT_FAILED and the cart is kept. Switch to Wallet (or another
-   card that does not end in 0000) and pay to complete the retry.
+1. Thêm món vào giỏ lại.
+2. Ở **Thanh toán**, chọn **Thẻ** và nhập số kết thúc bằng `0000`, ví dụ `4111 1111 1111 0000`.
+3. Thanh toán bị từ chối (402), đơn chuyển sang PAYMENT_FAILED và giỏ hàng được giữ. Đổi sang Ví hoặc số thẻ khác để thanh toán lại.
 
-## Test hints
+## Gợi ý khi test
 
-- Card: any CARD number of 12-19 digits that ends in `0000` is declined by the mock gateway; any other number succeeds.
-- Wallet: succeeds unless the order total is above 5,000,000 VND.
-- Mock payments take about 200 ms outside the test environment.
+- Thẻ 12-19 chữ số kết thúc bằng `0000` bị cổng giả lập từ chối. Các số khác thành công.
+- Ví thành công, trừ khi tổng đơn trên 5.000.000đ.
+- Thanh toán giả lập mất khoảng 200 ms (ngoài môi trường test).
 
-## Known limitations
+## Hạn chế đã biết
 
-- **Mock payment.** No real gateway, no refunds. Cancelling a PAID order does not return money.
-- **Token in localStorage.** The access token and user profile are stored under `brewlite-auth` in `localStorage`
-  so sessions survive reloads. Any script on the page can read it (XSS risk). Acceptable for this coursework;
-  an httpOnly cookie would be the production choice. A 401 from the API clears the session.
-- **No staff UI.** Staff advance orders only through `PATCH /api/orders/:id/status` with `X-Staff-Key`, and that
-  endpoint is disabled unless `STAFF_API_KEY` is set (Docker compose passes it from the host env and leaves it empty by default).
-- **Development secrets.** The default database password and JWT secret in the compose files are development values.
-- **Idempotency is per user and per key.** Keys live in the database; there is no cleanup job.
+- **Thanh toán giả lập.** Chưa có cổng thật và chưa hoàn tiền. Hủy đơn đã thanh toán không trả lại tiền.
+- **Token lưu trong localStorage.** Token và thông tin người dùng lưu dưới khóa `brewlite-auth` để giữ đăng nhập khi tải lại trang. Script độc hại trên trang có thể đọc được (rủi ro XSS). Chấp nhận được cho bài tập, bản thật nên dùng cookie httpOnly. API trả 401 thì phiên bị xóa.
+- **Chưa có giao diện cho nhân viên.** Nhân viên chỉ đổi trạng thái đơn qua `PATCH /api/orders/:id/status` với `X-Staff-Key`. Trong Docker, API này mặc định tắt trừ khi bạn export `STAFF_API_KEY` trước khi chạy.
+- **Bí mật mặc định chỉ để dev.** Mật khẩu database và `JWT_SECRET` mặc định trong compose chỉ dùng khi phát triển.
+- **Idempotency theo từng người dùng và từng key.** Key lưu trong database, chưa có job dọn dẹp.
 
-## Frontend authentication
+## Đăng nhập trên giao diện
 
-- Login and register accept `?next=` only for same-origin relative paths; anything else falls back to `/menu`.
-- Pages that need a login redirect to `/login` (`use-require-auth` hook and `require-auth` component).
+- Trang đăng nhập và đăng ký chỉ chấp nhận `?next=` là đường dẫn nội bộ. Giá trị khác sẽ quay về `/menu`.
+- Trang cần đăng nhập sẽ tự chuyển về `/login`.
 
-## Design system
+## Thiết kế giao diện
 
-Colors, fonts and tokens are in `apps/frontend/src/app/globals.css` and `tailwind.config.ts`
-(Playfair Display + DM Sans, espresso / amber / cream). Landing images are placeholders until files are
-added to `public/images` and passed as `src` to `ImageFrame`.
+Màu, font và token nằm trong `apps/web/src/app/globals.css` và `tailwind.config.ts` (Playfair Display + DM Sans, tông nâu espresso, hổ phách, kem). Ảnh menu lấy từ Unsplash, nguồn ghi trong [apps/web/public/images/menu/CREDITS.md](apps/web/public/images/menu/CREDITS.md). Ảnh trang chủ ghi nguồn trong [apps/web/public/images/landing/CREDITS.md](apps/web/public/images/landing/CREDITS.md).
 
-Menu photos: Unsplash, credits in [apps/frontend/public/images/menu/CREDITS.md](apps/frontend/public/images/menu/CREDITS.md).
+## Quy trình Git
 
-## Git workflow
-
-One branch per task (for example `feat/task-02-products-api`), small commits, review before merging to `main`.
-The task-to-branch map is in [docs/scrum/sprint-plan.md](docs/scrum/sprint-plan.md).
+Mỗi task một nhánh (ví dụ `feat/task-02-products-api`), commit nhỏ, review trước khi gộp vào `main`. Bảng task và nhánh nằm ở [docs/scrum/sprint-plan.md](docs/scrum/sprint-plan.md).
